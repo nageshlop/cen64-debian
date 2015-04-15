@@ -1,0 +1,67 @@
+.\"                                      Hey, EMACS: -*- nroff -*-
+.\" (C) Copyright 2015 John Paul Adrian Glaubitz <glaubitz@physik.fu-berlin.de>,
+.\"
+.\" First parameter, NAME, should be all caps
+.\" Second parameter, SECTION, should be 1-8, maybe w/ subsection
+.\" other parameters are allowed: see man(7), man(1)
+.TH CEN64 1 "April 15, 2015"
+.\" Please adjust this date whenever revising the manpage.
+.\"
+.\" Some roff macros, for reference:
+.\" .nh        disable hyphenation
+.\" .hy        enable hyphenation
+.\" .ad l      left justify
+.\" .ad b      justify to both left and right margins
+.\" .nf        disable filling
+.\" .fi        enable filling
+.\" .br        insert line break
+.\" .sp <n>    insert n+1 empty lines
+.\" for manpage-specific macros, see man(7)
+.SH NAME
+cen64 \- Cycle-Accurate Nintendo 64 Simulator
+.SH SYNOPSIS
+.B cen64
+.RI [Options]\ <PIF\ IPL\ ROM\ Path>\ [Cart\ ROM\ Path]
+.PP
+.SH DESCRIPTION
+CEN64 is a new Nintendo 64 emulator which aims for perfect emulation by simulating the
+hardware inside the Nintendo 64 itself, down to the register-transfer level (RTL). It
+is still heavy under development and currently does not have any sound emulation.
+.PP
+Being a cycle-accurate emulator, CEN64 has considerably high hardware requirements
+to achieve passable performance when emulating most Nintendo 64 titles. However,
+similar to the higan emulator, the cycle accuracy guarantess very high compatibility
+and despite its early development stage, CEN64 already allows one to run several commercial
+titles without or with only minor glitches.
+.PP
+As a distinctive feature among Nintendo 64 emulators, CEN64 offers emulation support for the
+64DD external disk drive that was never released outside Japan and even there is considered
+rare. Thus, CEN64 offers the unique possibility for anyone to play any of the rare titles
+that were exclusively released on the 64DD.
+.PP
+.SH OPTIONS
+CEN64 currently supports only a very limited amount of options, a summary of
+these options is shown below.
+.TP
+.B \-debug [addr][:port]
+Starts the debugger on interface:port. By default, CEN64 uses localhost:64646.
+.TP
+.B \-ddipl <path>
+Path to the 64DD IPL ROM (enables 64DD mode).
+.TP
+.B \-ddrom <path>
+Path to the 64DD disk ROM (requires \-ddipl).
+.TP
+.B \-nointerface
+Run simulator without a user interface.
+.SH SEE ALSO
+.BR cen64-qt(1).
+.PP
+Up-to-date information can be found on the upstream website at http://www.cen64.com. For help,
+please refer to the forums at http://forums.cen64.com.
+.SH BUGS
+The Debian bug tracker should be used for packaging-related bug reports only. Please report
+any bugs concerning the actual emulator directly to the upstream bug tracker which can be
+found at: http://bugtracker.cen64.com.
+.SH AUTHOR
+This manual page was written by John Paul Adrian Glaubitz <glaubitz@physik.fu-berlin.de>.

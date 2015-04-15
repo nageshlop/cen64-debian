@@ -1,0 +1,31 @@
+Source: cen64
+Section: otherosfs
+Priority: optional
+Maintainer: John Paul Adrian Glaubitz <glaubitz@physik.fu-berlin.de>
+Build-Depends: debhelper (>= 9), cmake, libgl1-mesa-dev
+Standards-Version: 3.9.6
+Homepage: http://www.cen64.com/
+Vcs-Git: git://github.com/glaubitz/cen64-debian.git
+Vcs-Browser: https://github.com/glaubitz/cen64-debian/
+
+Package: cen64
+Architecture: amd64 i386 kfreebsd-amd64 kfreebsd-i386
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Cycle-Accurate Nintendo 64 Simulator
+ CEN64 is a new Nintendo 64 emulator which aims for perfect emulation by
+ simulating the hardware inside the Nintendo 64 itself, down to the
+ register-transfer level (RTL). It is still heavy under development and
+ currently does not have any sound emulation.
+ .
+ Being a cycle-accurate emulator, CEN64 has considerably high hardware
+ requirements to achieve passable performance when emulating most Nintendo 64
+ titles. However, similar to the higan emulator, the cycle accuracy guarantess
+ very high compatibility and despite its early development stage, CEN64 already
+ allows one to run several commercial titles without or with only minor
+ glitches.
+ .
+ As a distinctive feature among Nintendo 64 emulators, CEN64 offers emulation
+ support for the 64DD external disk drive that was never released outside Japan
+ and even there is considered rare. Thus, CEN64 offers the unique possibility
+ for anyone to play any of the rare titles that were exclusively released on the
+ 64DD.
