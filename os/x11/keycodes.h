@@ -1,14 +1,15 @@
 //
-// os/unix/x11/keycodes.h
+// os/x11/keycodes.h: X11 keycode definitions.
 //
-// Definitions for keycodes.
+// CEN64: Cycle-Accurate Nintendo 64 Emulator.
+// Copyright (C) 2015, Tyler J. Stachecki.
 //
 // This file is subject to the terms and conditions defined in
 // 'LICENSE', which is part of this source code package.
 //
 
-#ifndef __unix_x11_keycodes_h__
-#define __unix_x11_keycodes_h__
+#ifndef CEN64_OS_X11_KEYCODES
+#define CEN64_OS_X11_KEYCODES
 #include <X11/keysym.h>
 
 // Letter keys.

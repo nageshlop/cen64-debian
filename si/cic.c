@@ -1,8 +1,8 @@
 //
 // si/cic.c: PIF CIC security/lock out algorithms.
 //
-// CEN64: Cycle-Accurate Nintendo 64 Simulator.
-// Copyright (C) 2014, Tyler J. Stachecki.
+// CEN64: Cycle-Accurate Nintendo 64 Emulator.
+// Copyright (C) 2015, Tyler J. Stachecki.
 //
 // This file is subject to the terms and conditions defined in
 // 'LICENSE', which is part of this source code package.
@@ -16,12 +16,14 @@
 #define CIC_SEED_NUS_6103 0x0002783FU
 #define CIC_SEED_NUS_6105 0x0002913FU
 #define CIC_SEED_NUS_6106 0x0002853FU
+#define CIC_SEED_NUS_8303 0x0000DD00U
 
 #define CRC_NUS_6101 0x6170A4A1U
 #define CRC_NUS_6102 0x90BB6CB5U
 #define CRC_NUS_6103 0x0B050EE0U
 #define CRC_NUS_6105 0x98BC2C86U
 #define CRC_NUS_6106 0xACC8580AU
+#define CRC_NUS_8303 0x0E018159U
 
 cen64_cold static uint32_t si_crc32(const uint8_t *data, size_t size);
 
@@ -48,6 +50,10 @@ int get_cic_seed(const uint8_t *rom_data, uint32_t *cic_seed) {
 
     case CRC_NUS_6106:
       *cic_seed = CIC_SEED_NUS_6106;
+      break;
+
+    case CRC_NUS_8303:
+      *cic_seed = CIC_SEED_NUS_8303;
       break;
 
     default:

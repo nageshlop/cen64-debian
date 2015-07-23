@@ -1,8 +1,8 @@
 //
 // options.c: CEN64 simulation options.
 //
-// CEN64: Cycle-Accurate Nintendo 64 Simulator.
-// Copyright (C) 2014, Tyler J. Stachecki.
+// CEN64: Cycle-Accurate Nintendo 64 Emulator.
+// Copyright (C) 2015, Tyler J. Stachecki.
 //
 // This file is subject to the terms and conditions defined in
 // 'LICENSE', which is part of this source code package.
@@ -97,19 +97,27 @@ int parse_options(struct cen64_options *options, int argc, const char *argv[]) {
 
 // Prints the command-line usage string.
 void print_command_line_usage(const char *invokation_string) {
+#ifdef _WIN32
+//  show_console();
+#endif
+
   printf("%s [Options] <PIF IPL ROM Path> [Cart ROM Path]\n\n"
 
     "Options:\n"
 #ifdef _WIN32
-      "  -console                   : Creates/shows the system console.\n"
+      "  -console                   : Creates/shows this system console window.\n"
 #endif
       "  -debug [addr][:port]       : Starts the debugger on interface:port.\n"
       "                               By default, CEN64 uses localhost:64646.\n"
       "  -ddipl <path>              : Path to the 64DD IPL ROM (enables 64DD mode).\n"
       "  -ddrom <path>              : Path to the 64DD disk ROM (requires -ddipl).\n"
-      "  -nointerface               : Run simulator without a user interface.\n"
+      "  -nointerface               : Run emulator without a user interface.\n"
 
     ,invokation_string
   );
+
+#ifdef _WIN32
+//  hide_console();
+#endif
 }
 

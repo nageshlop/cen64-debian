@@ -1,16 +1,18 @@
 //
-// os/timer.h
+// os/posix/timer.h: Functions for obtaining the system clock time.
 //
-// Functions for mapping ROM images into the address space.
+// CEN64: Cycle-Accurate Nintendo 64 Emulator.
+// Copyright (C) 2015, Tyler J. Stachecki.
 //
 // This file is subject to the terms and conditions defined in
 // 'LICENSE', which is part of this source code package.
 //
 
-#ifndef __os_timer_h__
-#define __os_timer_h__
-#define NS_PER_SEC 1000000000ULL
+#ifndef CEN64_OS_POSIX_TIMER
+#define CEN64_OS_POSIX_TIMER
 #include "common.h"
+
+#define NS_PER_SEC 1000000000ULL
 
 #if defined(CLOCK_MONOTONIC_PRECISE)
 #define GETTIME_SOURCE CLOCK_MONOTONIC_PRECISE
@@ -18,11 +20,7 @@
 #define GETTIME_SOURCE CLOCK_MONOTONIC_RAW
 #endif
 
-#ifdef _WIN32
-#include <windows.h>
-typedef DWORD cen64_time;
-
-#elif defined(__APPLE__)
+#ifdef __APPLE__
 #include <time.h>
 typedef struct timeval cen64_time;
 
