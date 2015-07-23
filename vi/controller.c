@@ -1,20 +1,23 @@
 //
 // vi/controller.c: Video interface controller.
 //
-// CEN64: Cycle-Accurate Nintendo 64 Simulator.
-// Copyright (C) 2014, Tyler J. Stachecki.
+// CEN64: Cycle-Accurate Nintendo 64 Emulator.
+// Copyright (C) 2015, Tyler J. Stachecki.
 //
 // This file is subject to the terms and conditions defined in
 // 'LICENSE', which is part of this source code package.
 //
 
 #include "common.h"
+#include "context.h"
 #include "bus/address.h"
 #include "bus/controller.h"
 #include "device/device.h"
 #include "os/main.h"
 #include "ri/controller.h"
 #include "vi/controller.h"
+#include "vi/render.h"
+#include "vi/window.h"
 #include "vr4300/interface.h"
 
 #define VI_COUNTER_START (62500000.0 / 60.0) + 1;
@@ -52,19 +55,19 @@ int read_vi_regs(void *opaque, uint32_t address, uint32_t *word) {
 
 // Advances the controller by one clock cycle.
 void vi_cycle(struct vi_controller *vi) {
-  struct render_area *ra = &vi->render_area;
-  int hskip, vres, hres;
-  float hcoeff, vcoeff;
-  unsigned type;
+  struct cen64_context c;
+  cen64_gl_window window;
+  size_t copy_size;
 
-  const uint8_t *buffer;
-  uint32_t offset;
+  struct render_area *ra = &vi->render_area;
+  struct bus_controller *bus;
+  float hcoeff, vcoeff;
 
   if (likely(vi->counter-- != 0))
     return;
 
-  offset = vi->regs[VI_ORIGIN_REG] & 0xFFFFFF;
-  buffer = vi->bus->ri->ram + offset;
+  cen64_context_save(&c);
+  window = vi->window;
 
   // Calculate the bounding positions.
   ra->x.start = vi->regs[VI_H_START_REG] >> 16 & 0x3FF;
@@ -75,37 +78,58 @@ void vi_cycle(struct vi_controller *vi) {
   hcoeff = (float) (vi->regs[VI_X_SCALE_REG] & 0xFFF) / (1 << 10);
   vcoeff = (float) (vi->regs[VI_Y_SCALE_REG] & 0xFFF) / (1 << 10);
 
-  // Calculate the height and width of the frame.
-  vres = ra->height =((ra->y.end - ra->y.start) >> 1) * vcoeff;
-  hres = ra->width = ((ra->x.end - ra->x.start)) * hcoeff;
-  hskip = ra->hskip = vi->regs[VI_WIDTH_REG] - ra->width;
-  type = vi->regs[VI_STATUS_REG] & 0x3;
-
-  if (hres <= 0 || vres <= 0)
-    type = 0;
-
   // Interact with the user interface?
-  if (likely(vi->gl_window.window)) {
-    if (os_exit_requested(&vi->gl_window))
+  if (likely(window)) {
+    cen64_mutex_lock(&window->event_mutex);
+
+    if (unlikely(window->exit_requested)) {
+      cen64_mutex_unlock(&window->event_mutex);
       device_exit(vi->bus);
+    }
 
-    os_render_frame(&vi->gl_window, buffer, hres, vres, hskip, type);
+    cen64_mutex_unlock(&window->event_mutex);
+    cen64_mutex_lock(&window->render_mutex);
+
+    // Calculate the height and width of the frame.
+    window->frame_vres = ra->height =((ra->y.end - ra->y.start) >> 1) * vcoeff;
+    window->frame_hres = ra->width = ((ra->x.end - ra->x.start)) * hcoeff;
+    window->frame_hskip = ra->hskip = vi->regs[VI_WIDTH_REG] - ra->width;
+    window->frame_type = vi->regs[VI_STATUS_REG] & 0x3;
+
+    if (window->frame_hres <= 0 || window->frame_vres <= 0)
+      window->frame_type = 0;
+
+    // Copy the frame data into a temporary buffer.
+    copy_size = sizeof(bus->ri->ram) - (vi->regs[VI_ORIGIN_REG] & 0xFFFFFF);
+
+    if (copy_size > sizeof(vi->window->frame_buffer))
+      copy_size = sizeof(vi->window->frame_buffer);
+
+    memcpy(&bus, vi, sizeof(bus));
+    memcpy(vi->window->frame_buffer,
+      bus->ri->ram + (vi->regs[VI_ORIGIN_REG] & 0xFFFFFF),
+      copy_size);
+
+    cen64_mutex_unlock(&vi->window->render_mutex);
+    cen64_gl_window_push_frame(window);
   }
-
-  else if (device_exit_requested)
-    device_exit(vi->bus);
 
   // Raise an interrupt to indicate refresh.
   signal_rcp_interrupt(vi->bus->vr4300, MI_INTR_VI);
   vi->counter = VI_COUNTER_START;
+
+  cen64_context_restore(&c);
 }
 
 // Initializes the VI.
-int vi_init(struct vi_controller *vi,
-  struct bus_controller *bus) {
+int vi_init(struct vi_controller *vi, struct bus_controller *bus) {
   vi->counter = VI_COUNTER_START;
   vi->bus = bus;
 
+  if (vi_create_window(vi))
+    return -1;
+
+  gl_window_init(vi);
   return 0;
 }
 

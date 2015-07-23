@@ -1,22 +1,19 @@
 //
 // device.c: CEN64 device container.
 //
-// CEN64: Cycle-Accurate Nintendo 64 Simulator.
-// Copyright (C) 2014, Tyler J. Stachecki.
+// CEN64: Cycle-Accurate Nintendo 64 Emulator.
+// Copyright (C) 2015, Tyler J. Stachecki.
 //
 // This file is subject to the terms and conditions defined in
 // 'LICENSE', which is part of this source code package.
 //
 
-#include <setjmp.h>
-#include <stddef.h>
-#include <stdlib.h>
 #include "common.h"
 #include "device/device.h"
 #include "device/netapi.h"
 #include "fpu/fpu.h"
-#include "os/gl_window.h"
-#include "os/rom_file.h"
+#include "gl_window.h"
+#include "os/common/rom_file.h"
 
 #include "bus/controller.h"
 #include "ai/controller.h"
@@ -28,12 +25,13 @@
 #include "vi/controller.h"
 #include "vr4300/cpu.h"
 #include "vr4300/cp1.h"
+#include <setjmp.h>
 
 cen64_cold static int device_debug_spin(struct cen64_device *device);
 cen64_flatten cen64_hot static int device_spin(struct cen64_device *device);
 
 // Creates and initializes a device.
-struct cen64_device *device_create(struct cen64_device *device, uint8_t *ram,
+struct cen64_device *device_create(struct cen64_device *device,
   const struct rom_file *ddipl, const struct rom_file *ddrom,
   const struct rom_file *pifrom, const struct rom_file *cart) {
 
@@ -75,7 +73,7 @@ struct cen64_device *device_create(struct cen64_device *device, uint8_t *ram,
   }
 
   // Initialize the RI.
-  if (ri_init(&device->ri, &device->bus, ram)) {
+  if (ri_init(&device->ri, &device->bus)) {
     debug("create_device: Failed to initialize the RI.\n");
     return NULL;
   }
@@ -156,6 +154,7 @@ int device_spin(struct cen64_device *device) {
     for (i = 0; i < 2; i++) {
       vr4300_cycle(&device->vr4300);
       rsp_cycle(&device->rsp);
+      ai_cycle(&device->ai);
       vi_cycle(&device->vi);
 
     }
@@ -183,6 +182,7 @@ int device_debug_spin(struct cen64_device *device) {
     for (i = 0; i < 2; i++) {
       vr4300_cycle(&device->vr4300);
       rsp_cycle(&device->rsp);
+      ai_cycle(&device->ai);
       vi_cycle(&device->vi);
 
       vr4300_cycle_extra(&device->vr4300, &vr4300_stats);
