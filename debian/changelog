@@ -1,3 +1,12 @@
+cen64 (0.3+git20150909-1) unstable; urgency=medium
+
+  * New upstream git snapshot.
+  * debian/control:
+    - Drop unsupported architectures for cen64 binary package
+      (Closes: #793342, #793343).
+
+ -- John Paul Adrian Glaubitz <glaubitz@physik.fu-berlin.de>  Wed, 09 Sep 2015 11:21:18 +0200
+
 cen64 (0.3+git20150705-1) unstable; urgency=medium
 
   * New upstream git snapshot.
