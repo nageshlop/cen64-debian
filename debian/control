@@ -9,7 +9,7 @@ Vcs-Git: git://github.com/glaubitz/cen64-debian.git
 Vcs-Browser: https://github.com/glaubitz/cen64-debian/
 
 Package: cen64
-Architecture: amd64 i386 kfreebsd-amd64 kfreebsd-i386
+Architecture: amd64
 Depends: ${shlibs:Depends}, ${misc:Depends}
 Description: Cycle-Accurate Nintendo 64 Simulator
  CEN64 is a new Nintendo 64 emulator which aims for perfect emulation by
