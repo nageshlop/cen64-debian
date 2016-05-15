@@ -40,11 +40,19 @@ struct ai_controller {
 
   unsigned fifo_count, fifo_wi, fifo_ri;
   struct ai_fifo_entry fifo[2];
+  bool no_output;
 };
 
-cen64_cold int ai_init(struct ai_controller *ai, struct bus_controller *bus);
+cen64_cold int ai_init(struct ai_controller *ai, struct bus_controller *bus,
+  bool no_interface);
 
-cen64_flatten cen64_hot void ai_cycle(struct ai_controller *ai);
+// Only invoke ai_cycle_ when the counter has expired (timeout).
+void ai_cycle_(struct ai_controller *ai);
+
+cen64_flatten cen64_hot static inline void ai_cycle(struct ai_controller *ai) {
+  if (unlikely(ai->counter-- == 0))
+    ai_cycle_(ai);
+}
 
 int read_ai_regs(void *opaque, uint32_t address, uint32_t *word);
 int write_ai_regs(void *opaque, uint32_t address, uint32_t word, uint32_t dqm);

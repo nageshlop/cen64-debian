@@ -192,25 +192,35 @@ cen64_align(const uint16_t ror_l2b_keys[16][8], CACHE_LINE_SIZE) = {
   {0x010E, 0x0300, 0x0502, 0x0704, 0x0906, 0x0B08, 0x0D0A, 0x0F0C},
 };
 
-// TODO: Highly optimized. More of a stopgap measure.
 #ifndef __SSSE3__
-static inline __m128i sse2_pshufb(__m128i v, const uint16_t *keys) {
-  uint8_t dest[16];
-  uint8_t temp[16];
+static inline __m128i sse2_pshufb_loop8(__m128i v, const uint8_t *keys) {
+  cen64_align(uint8_t temp[(0x80|128)+1], 16);
   unsigned j;
 
-  _mm_storeu_si128((__m128i *) temp, v);
+  _mm_store_si128((__m128i *) temp, v);
+  temp[0x80] = 0;
 
-  for (j = 0; j < 8; j++) {
-    uint16_t key = keys[j];
-    uint8_t key_hi = key >> 8;
-    uint8_t key_lo = key >> 0;
-
-    dest[(j << 1) + 1] = key_hi == 0x80 ? 0x00 : temp[key_hi];
-    dest[(j << 1) + 0] = key_lo == 0x80 ? 0x00 : temp[key_lo];
+  #if 0
+  for (j = 0; j < 16; j++)
+    temp[j + 16] = temp[keys[j]];
+  #else
+  for (j = 0; j < 16; j+=4) {
+    temp[j + 16] = temp[keys[j+0]];
+    temp[j + 17] = temp[keys[j+1]];
+    temp[j + 18] = temp[keys[j+2]];
+    temp[j + 19] = temp[keys[j+3]];
   }
+  #endif
 
-  return _mm_loadu_si128((__m128i *) dest);
+  return _mm_load_si128(((__m128i *)temp)+1);
+}
+static inline __m128i sse2_pshufb(__m128i v, const uint16_t *keys) {
+  union {
+    const uint16_t *k16;
+    const uint8_t *k8;
+  } x;
+  x.k16 = keys;
+  return sse2_pshufb_loop8(v, x.k8);
 }
 #endif
 
@@ -223,49 +233,61 @@ int arch_rsp_init(struct rsp *rsp) { return 0; }
 #ifndef __SSSE3__
 __m128i rsp_vect_load_and_shuffle_operand(
   const uint16_t *src, unsigned element) {
-  uint16_t word_lo, word_hi;
-  uint64_t dword;
+  __m128i v;
 
-  // element => 0w ... 7w
-  if (element >= 8) {
-    memcpy(&word_lo, src + (element - 8), sizeof(word_lo));
-    dword = word_lo | ((uint32_t) word_lo << 16);
+  switch(element) {
+    case 0:
+    case 1:
+      v = _mm_load_si128((__m128i *) src);
+      return v;
 
-    return _mm_shuffle_epi32(_mm_loadl_epi64((__m128i *) &dword),
-      _MM_SHUFFLE(0,0,0,0));
-  }
-
-  // element => 0h ... 3h
-  else if (element >= 4) {
-    __m128i v;
-
-    memcpy(&word_hi, src + element - 0, sizeof(word_hi));
-    memcpy(&word_lo, src + element - 4, sizeof(word_lo));
-    dword = word_lo | ((uint32_t) word_hi << 16);
-
-    v = _mm_loadl_epi64((__m128i *) &dword);
-    v = _mm_shufflelo_epi16(v, _MM_SHUFFLE(1,1,0,0));
-    return _mm_shuffle_epi32(v, _MM_SHUFFLE(1,1,0,0));
-  }
-
-  // element => 0q ... 1q
-  else if (element >= 2) {
-    __m128i v = rsp_vect_load_unshuffled_operand(src);
-
-    if (element == 2) {
+    // element => 0q
+    case 2:
+      v = _mm_load_si128((__m128i *) src);
       v = _mm_shufflelo_epi16(v, _MM_SHUFFLE(2,2,0,0));
       v = _mm_shufflehi_epi16(v, _MM_SHUFFLE(2,2,0,0));
-    }
+      return v;
 
-    else {
+    // element => 1q
+    case 3:
+      v = _mm_load_si128((__m128i *) src);
       v = _mm_shufflelo_epi16(v, _MM_SHUFFLE(3,3,1,1));
       v = _mm_shufflehi_epi16(v, _MM_SHUFFLE(3,3,1,1));
-    }
+      return v;
 
-    return v;
+    // element => 0h ... 3h
+    case 4:
+    case 5:
+    case 6:
+    case 7:
+      __asm__("" : "=x"(v)); /* Do not remove. */
+      v = _mm_insert_epi16(v, src[element - 4], 0);
+      v = _mm_insert_epi16(v, src[element - 0], 1);
+      v = _mm_shufflelo_epi16(v, _MM_SHUFFLE(1,1,0,0));
+      v = _mm_shuffle_epi32(v, _MM_SHUFFLE(1,1,0,0));
+      return v;
+
+    // element => 0w ... 7w
+    case 8:
+    case 9:
+    case 10:
+    case 11:
+    case 12:
+    case 13:
+    case 14:
+    case 15:
+      __asm__("" : "=x"(v)); /* Do not remove. */
+      v = _mm_insert_epi16(v, src[element - 8], 0);
+      v = _mm_unpacklo_epi16(v, v);
+      v = _mm_shuffle_epi32(v, _MM_SHUFFLE(0,0,0,0));
+      return v;
   }
 
-  return rsp_vect_load_unshuffled_operand(src);
+  #ifdef NDEBUG
+  __builtin_unreachable();
+  #else
+  __builtin_trap();
+  #endif
 }
 #endif
 

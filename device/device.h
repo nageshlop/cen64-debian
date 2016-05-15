@@ -13,6 +13,7 @@
 #include "common.h"
 #include "device/options.h"
 #include "os/common/rom_file.h"
+#include "os/common/save_file.h"
 
 #include "ai/controller.h"
 #include "bus/controller.h"
@@ -22,6 +23,7 @@
 #include "si/controller.h"
 #include "rdp/cpu.h"
 #include "rsp/cpu.h"
+#include "thread.h"
 #include "vi/controller.h"
 #include "vr4300/cpu.h"
 
@@ -41,13 +43,22 @@ struct cen64_device {
 
   struct rdp rdp;
   struct rsp rsp;
+
   int debug_sfd;
+
+  bool multithread;
+  bool other_thread_is_waiting;
+  cen64_mutex sync_mutex;
+  cen64_cv sync_cv;
 };
 
 cen64_cold void device_destroy(struct cen64_device *device);
 cen64_cold struct cen64_device *device_create(struct cen64_device *device,
   const struct rom_file *ddipl, const struct rom_file *ddrom,
-  const struct rom_file *pifrom, const struct rom_file *cart);
+  const struct rom_file *pifrom, const struct rom_file *cart,
+  const struct save_file *eeprom, const struct save_file *sram,
+  const struct save_file *flashram, const struct controller *controller,
+  bool no_audio, bool no_video);
 
 cen64_cold void device_exit(struct bus_controller *bus);
 cen64_cold void device_run(struct cen64_device *device);

@@ -23,22 +23,39 @@
 #include "vr4300/segment.h"
 
 // Mask to negate second operand if subtract operation.
+#if defined(__GNUC__) && defined(__x86_64__)
+static inline uint64_t vr4300_addsub_mask(uint32_t iw)
+{
+  uint64_t mask;
+  __asm__("shr $2,       %k[iwiw];"
+          "sbb %q[mask], %q[mask];"
+    : [mask] "=r" (mask), [iwiw] "+r" (iw) : : "cc");
+  return mask;
+}
+#elif defined(__GNUC__) && defined(__i386__)
+static inline uint64_t vr4300_addsub_mask(uint32_t iw)
+{
+  int32_t mask;
+  __asm__("shr $2,       %k[iwiw];"
+          "sbb %k[mask], %k[mask];"
+    : [mask] "=r" (mask), [iwiw] "+r" (iw) : : "cc");
+  return (uint64_t)((int64_t)mask);
+}
+#else
 cen64_align(static const uint64_t vr4300_addsub_lut[4], 32) = {
   0x0ULL, ~0x0ULL, ~0x0ULL, ~0x0ULL
 };
-
-// Mask to select outputs for bitwise operations.
-cen64_align(static const uint64_t vr4300_bitwise_lut[4][2], 64) = {
-  {~0ULL,  0ULL}, // AND
-  {~0ULL, ~0ULL}, // OR
-  { 0ULL, ~0ULL}, // XOR
-  { 0ULL,  0ULL}, // -
-};
+static inline uint64_t vr4300_addsub_mask(uint32_t iw)
+{
+  return vr4300_addsub_lut[iw & 0x2];
+}
+#endif
 
 // Mask to kill the instruction word if "likely" branch.
-cen64_align(static const uint32_t vr4300_branch_lut[2], 8) = {
-  ~0U, 0U
-};
+static inline uint32_t vr4300_branch_mask(uint32_t iw, unsigned index) {
+  iw = (uint32_t)(   (int32_t)(iw << (31 - index)) >> 31  );
+  return ~iw; /* ones' complement must be done last on return */
+}
 
 // Mask to selectively sign-extend compute values.
 cen64_align(static const uint64_t vr4300_mult_sex_mask[2], 16) = {
@@ -46,10 +63,37 @@ cen64_align(static const uint64_t vr4300_mult_sex_mask[2], 16) = {
 };
 
 // Mask to selectively sign-extend loaded values.
-cen64_align(static const uint64_t vr4300_load_sex_mask[2][4], CACHE_LINE_SIZE) = {
-  {~0ULL,   ~0ULL,     0ULL, ~0ULL},          // sex
-  {0xFFULL, 0xFFFFULL, 0ULL, 0xFFFFFFFFULL},  // zex
+cen64_align(static const uint64_t vr4300_load_sex_mask[8], CACHE_LINE_SIZE) = {
+  ~0ULL,   ~0ULL,     0ULL, ~0ULL,          // sex
+  0xFFULL, 0xFFFFULL, 0ULL, 0xFFFFFFFFULL,  // zex
 };
+
+#if defined(__GNUC__) && defined(__x86_64__)
+static inline uint64_t VR4300_LWR_forceset(unsigned offset)
+{
+  uint64_t mask;
+  __asm__("add $4294967293, %k[offs];"
+          "sbb %q[mask],    %q[mask];"
+    : [mask] "=r" (mask), [offs] "+r" (offset) : : "cc");
+  return mask;
+}
+#elif defined(__GNUC__) && defined(__i386__)
+static inline uint64_t VR4300_LWR_forceset(unsigned offset)
+{
+  int32_t mask;
+  __asm__("add $4294967293, %k[offs];"
+          "sbb %k[mask],    %k[mask];"
+    : [mask] "=r" (mask), [offs] "+r" (offset) : : "cc");
+  return (uint64_t)((int64_t)mask);
+}
+#else
+cen64_align(static const uint64_t VR4300_LWR_forceset_lut[], 32) =
+  {0ULL, 0ULL, 0ULL, ~0ULL};
+static inline uint64_t VR4300_LWR_forceset(unsigned offset)
+{
+  return VR4300_LWR_forceset_lut[offset];
+}
+#endif
 
 //
 // Raises a MCI interlock for a set number of cycles.
@@ -67,7 +111,7 @@ static inline int vr4300_do_mci(struct vr4300 *vr4300, unsigned cycles) {
 int VR4300_ADD_SUB(struct vr4300 *vr4300,
   uint32_t iw, uint64_t rs, uint64_t rt) {
   struct vr4300_exdc_latch *exdc_latch = &vr4300->pipeline.exdc_latch;
-  uint64_t mask = vr4300_addsub_lut[iw & 0x2];
+  uint64_t mask = vr4300_addsub_mask(iw);
 
   unsigned dest;
   uint64_t rd;
@@ -136,7 +180,7 @@ int VR4300_ADDIU_LUI_SUBIU(struct vr4300 *vr4300,
 int VR4300_ADDU_SUBU(struct vr4300 *vr4300,
   uint32_t iw, uint64_t rs, uint64_t rt) {
   struct vr4300_exdc_latch *exdc_latch = &vr4300->pipeline.exdc_latch;
-  uint64_t mask = vr4300_addsub_lut[iw & 0x2];
+  uint64_t mask = vr4300_addsub_mask(iw);
 
   unsigned dest;
   uint64_t rd;
@@ -158,14 +202,18 @@ int VR4300_ADDU_SUBU(struct vr4300 *vr4300,
 int VR4300_AND_OR_XOR(struct vr4300 *vr4300,
   uint32_t iw, uint64_t rs, uint64_t rt) {
   struct vr4300_exdc_latch *exdc_latch = &vr4300->pipeline.exdc_latch;
-  uint64_t and_mask = vr4300_bitwise_lut[iw & 0x3][0];
-  uint64_t xor_mask = vr4300_bitwise_lut[iw & 0x3][1];
 
   unsigned dest;
-  uint64_t rd;
+  uint64_t rd, rand, rxor;
 
   dest = GET_RD(iw);
-  rd = ((rs & rt) & and_mask) | ((rs ^ rt) & xor_mask);
+  rand = rs & rt;
+  rxor = rs ^ rt;
+  rd = rand + rxor; // lea
+  if((iw & 1) == 0) // cmov
+    rd = rxor;
+  if((iw & 3) == 0) // cmov
+    rd = rand;
 
   exdc_latch->result = rd;
   exdc_latch->dest = dest;
@@ -180,16 +228,21 @@ int VR4300_AND_OR_XOR(struct vr4300 *vr4300,
 int VR4300_ANDI_ORI_XORI(struct vr4300 *vr4300,
   uint32_t iw, uint64_t rs, uint64_t rt) {
   struct vr4300_exdc_latch *exdc_latch = &vr4300->pipeline.exdc_latch;
-  uint64_t and_mask = vr4300_bitwise_lut[iw >> 26 & 0x3][0];
-  uint64_t xor_mask = vr4300_bitwise_lut[iw >> 26 & 0x3][1];
 
   unsigned dest;
+  uint64_t rd, rand, rxor;
 
   dest = GET_RT(iw);
   rt = (uint16_t) iw;
-  rt = ((rs & rt) & and_mask) | ((rs ^ rt) & xor_mask);
+  rand = rs & rt;
+  rxor = rs ^ rt;
+  rd = rand + rxor; // lea
+  if((iw & 67108864) == 0) // cmov
+    rd = rxor;
+  if((iw & 201326592) == 0) // cmov
+    rd = rand;
 
-  exdc_latch->result = rt;
+  exdc_latch->result = rd;
   exdc_latch->dest = dest;
   return 0;
 }
@@ -221,7 +274,7 @@ int VR4300_BEQ_BEQL_BNE_BNEL_BWDETECT(struct vr4300 *vr4300,
   struct vr4300_icrf_latch *icrf_latch = &vr4300->pipeline.icrf_latch;
   struct vr4300_rfex_latch *rfex_latch = &vr4300->pipeline.rfex_latch;
   struct vr4300_exdc_latch *exdc_latch = &vr4300->pipeline.exdc_latch;
-  uint32_t mask = vr4300_branch_lut[iw >> 30 & 0x1];
+  uint32_t mask = vr4300_branch_mask(iw, 30);
   uint64_t offset = (uint64_t) ((int16_t) iw) << 2;
 
   bool is_ne = iw >> 26 & 0x1;
@@ -256,7 +309,7 @@ int VR4300_BEQ_BEQL_BNE_BNEL(struct vr4300 *vr4300,
   uint32_t iw, uint64_t rs, uint64_t rt) {
   struct vr4300_icrf_latch *icrf_latch = &vr4300->pipeline.icrf_latch;
   struct vr4300_rfex_latch *rfex_latch = &vr4300->pipeline.rfex_latch;
-  uint32_t mask = vr4300_branch_lut[iw >> 30 & 0x1];
+  uint32_t mask = vr4300_branch_mask(iw, 30);
   uint64_t offset = (uint64_t) ((int16_t) iw) << 2;
 
   bool is_ne = iw >> 26 & 0x1;
@@ -283,7 +336,7 @@ int VR4300_BGEZ_BGEZL_BLTZ_BLTZL(
   uint32_t iw, uint64_t rs, uint64_t unused(rt)) {
   struct vr4300_icrf_latch *icrf_latch = &vr4300->pipeline.icrf_latch;
   struct vr4300_rfex_latch *rfex_latch = &vr4300->pipeline.rfex_latch;
-  uint32_t mask = vr4300_branch_lut[iw >> 17 & 0x1];
+  uint32_t mask = vr4300_branch_mask(iw, 17);
   uint64_t offset = (uint64_t) ((int16_t) iw) << 2;
 
   bool is_ge = iw >> 16 & 0x1;
@@ -309,7 +362,7 @@ int VR4300_BGEZAL_BGEZALL_BLTZAL_BLTZALL(
   struct vr4300_icrf_latch *icrf_latch = &vr4300->pipeline.icrf_latch;
   struct vr4300_rfex_latch *rfex_latch = &vr4300->pipeline.rfex_latch;
   struct vr4300_exdc_latch *exdc_latch = &vr4300->pipeline.exdc_latch;
-  uint32_t mask = vr4300_branch_lut[iw >> 17 & 0x1];
+  uint32_t mask = vr4300_branch_mask(iw, 17);
   uint64_t offset = (uint64_t) ((int16_t) iw) << 2;
 
   bool is_ge = iw >> 16 & 0x1;
@@ -337,7 +390,7 @@ int VR4300_BGTZ_BGTZL_BLEZ_BLEZL(
   struct vr4300 *vr4300, uint32_t iw, uint64_t rs, uint64_t unused(rt)) {
   struct vr4300_icrf_latch *icrf_latch = &vr4300->pipeline.icrf_latch;
   struct vr4300_rfex_latch *rfex_latch = &vr4300->pipeline.rfex_latch;
-  uint32_t mask = vr4300_branch_lut[iw >> 30 & 0x1];
+  uint32_t mask = vr4300_branch_mask(iw, 30);
   uint64_t offset = (uint64_t) ((int16_t) iw) << 2;
 
   bool is_gt = iw >> 26 & 0x1;
@@ -558,7 +611,7 @@ int VR4300_CACHE(struct vr4300 *vr4300,
 int VR4300_DADD_DSUB(struct vr4300 *vr4300,
   uint32_t iw, uint64_t rs, uint64_t rt) {
   struct vr4300_exdc_latch *exdc_latch = &vr4300->pipeline.exdc_latch;
-  uint64_t mask = vr4300_addsub_lut[iw & 0x2];
+  uint64_t mask = vr4300_addsub_mask(iw);
 
   unsigned dest;
   uint64_t rd;
@@ -627,7 +680,7 @@ int VR4300_DADDIU_DSUBIU(struct vr4300 *vr4300,
 int VR4300_DADDU_DSUBU(struct vr4300 *vr4300,
   uint32_t iw, uint64_t rs, uint64_t rt) {
   struct vr4300_exdc_latch *exdc_latch = &vr4300->pipeline.exdc_latch;
-  uint64_t mask = vr4300_addsub_lut[iw & 0x2];
+  uint64_t mask = vr4300_addsub_mask(iw);
 
   unsigned dest;
   uint64_t rd;
@@ -913,9 +966,8 @@ int VR4300_J_JAL_BWDETECT(struct vr4300 *vr4300,
   struct vr4300_rfex_latch *rfex_latch = &vr4300->pipeline.rfex_latch;
   struct vr4300_exdc_latch *exdc_latch = &vr4300->pipeline.exdc_latch;
 
-  bool is_jal = iw >> 26 & 0x1;
   uint32_t target = iw << 2 & 0x0FFFFFFF;
-  uint32_t mask = vr4300_branch_lut[is_jal];
+  uint32_t mask = vr4300_branch_mask(iw, 26); // is_jal
 
   exdc_latch->result = rfex_latch->common.pc + 8;
   exdc_latch->dest = VR4300_REGISTER_RA & ~mask;
@@ -943,9 +995,8 @@ int VR4300_J_JAL(struct vr4300 *vr4300,
   struct vr4300_rfex_latch *rfex_latch = &vr4300->pipeline.rfex_latch;
   struct vr4300_exdc_latch *exdc_latch = &vr4300->pipeline.exdc_latch;
 
-  bool is_jal = iw >> 26 & 0x1;
   uint32_t target = iw << 2 & 0x0FFFFFFF;
-  uint32_t mask = vr4300_branch_lut[is_jal];
+  uint32_t mask = vr4300_branch_mask(iw, 26); // is_jal
 
   exdc_latch->result = rfex_latch->common.pc + 8;
   exdc_latch->dest = VR4300_REGISTER_RA & ~mask;
@@ -965,8 +1016,7 @@ int VR4300_JALR_JR(struct vr4300 *vr4300,
   struct vr4300_rfex_latch *rfex_latch = &vr4300->pipeline.rfex_latch;
   struct vr4300_exdc_latch *exdc_latch = &vr4300->pipeline.exdc_latch;
 
-  bool is_jalr = iw & 0x1;
-  uint32_t mask = vr4300_branch_lut[is_jalr];
+  uint32_t mask = vr4300_branch_mask(iw, 0); // is_jalr
   uint32_t rd = GET_RD(iw);
 
   exdc_latch->result = rfex_latch->common.pc + 8;
@@ -1019,8 +1069,9 @@ cen64_hot int VR4300_LOAD_STORE(struct vr4300 *vr4300,
   uint64_t sel_mask = (int64_t) (int32_t) (iw << 2) >> 32;
 
   uint64_t address = rs + (int16_t) iw;
-  unsigned request_size = (iw >> 26 & 0x3);
-  uint64_t dqm = vr4300_load_sex_mask[iw >> 28 & 0x1][request_size] & ~sel_mask;
+  unsigned request_index = (iw >> 26 & 0x7);
+  uint64_t dqm = vr4300_load_sex_mask[request_index] & ~sel_mask;
+  unsigned request_size = request_index & 0x3;
   unsigned lshiftamt = (3 - request_size) << 3;
   unsigned rshiftamt = (address & 0x3) << 3;
 
@@ -1093,9 +1144,6 @@ int VR4300_LWL_LWR(struct vr4300 *vr4300,
 
   // LWR
   if (iw >> 28 & 0x1) {
-    cen64_align(static const uint64_t forceset[], 32) =
-      {0ULL, 0ULL, 0ULL, ~0ULL};
-
     size = offset + 1;
     dqm = ~0U >> ((4 - size) << 3);
     address ^= offset;
@@ -1103,7 +1151,8 @@ int VR4300_LWL_LWR(struct vr4300 *vr4300,
     //
     // TODO/FIXME: Assume 32-bit mode.
     //
-    dqm |= forceset[offset];
+
+    dqm |= VR4300_LWR_forceset(offset);
   }
 
   // LWL

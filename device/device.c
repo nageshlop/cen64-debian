@@ -14,6 +14,7 @@
 #include "fpu/fpu.h"
 #include "gl_window.h"
 #include "os/common/rom_file.h"
+#include "os/common/save_file.h"
 
 #include "bus/controller.h"
 #include "ai/controller.h"
@@ -22,18 +23,26 @@
 #include "ri/controller.h"
 #include "si/controller.h"
 #include "rsp/cpu.h"
+#include "thread.h"
 #include "vi/controller.h"
 #include "vr4300/cpu.h"
 #include "vr4300/cp1.h"
 #include <setjmp.h>
 
 cen64_cold static int device_debug_spin(struct cen64_device *device);
+cen64_cold static int device_multithread_spin(struct cen64_device *device);
 cen64_flatten cen64_hot static int device_spin(struct cen64_device *device);
+
+cen64_flatten cen64_hot static CEN64_THREAD_RETURN_TYPE run_rcp_thread(void *);
+cen64_flatten cen64_hot static CEN64_THREAD_RETURN_TYPE run_vr4300_thread(void *);
 
 // Creates and initializes a device.
 struct cen64_device *device_create(struct cen64_device *device,
   const struct rom_file *ddipl, const struct rom_file *ddrom,
-  const struct rom_file *pifrom, const struct rom_file *cart) {
+  const struct rom_file *pifrom, const struct rom_file *cart,
+  const struct save_file *eeprom, const struct save_file *sram,
+  const struct save_file *flashram, const struct controller *controller,
+  bool no_audio, bool no_video) {
 
   // Initialize the bus.
   device->bus.ai = &device->ai;
@@ -54,7 +63,7 @@ struct cen64_device *device_create(struct cen64_device *device,
   }
 
   // Initialize the AI.
-  if (ai_init(&device->ai, &device->bus)) {
+  if (ai_init(&device->ai, &device->bus, no_audio)) {
     debug("create_device: Failed to initialize the AI.\n");
     return NULL;
   }
@@ -67,7 +76,7 @@ struct cen64_device *device_create(struct cen64_device *device,
   }
 
   // Initialize the PI.
-  if (pi_init(&device->pi, &device->bus, cart->ptr, cart->size)) {
+  if (pi_init(&device->pi, &device->bus, cart->ptr, cart->size, sram, flashram)) {
     debug("create_device: Failed to initialize the PI.\n");
     return NULL;
   }
@@ -80,13 +89,14 @@ struct cen64_device *device_create(struct cen64_device *device,
 
   // Initialize the SI.
   if (si_init(&device->si, &device->bus, pifrom->ptr,
-    cart->ptr, ddipl->ptr != NULL)) {
+    cart->ptr, ddipl->ptr != NULL, eeprom->ptr, eeprom->size,
+    controller)) {
     debug("create_device: Failed to initialize the SI.\n");
     return NULL;
   }
 
   // Initialize the VI.
-  if (vi_init(&device->vi, &device->bus)) {
+  if (vi_init(&device->vi, &device->bus, no_video)) {
     debug("create_device: Failed to initialize the VI.\n");
     return NULL;
   }
@@ -136,11 +146,112 @@ void device_run(struct cen64_device *device) {
   if (unlikely(device->debug_sfd > 0))
     device_debug_spin(device);
 
+  else if (device->multithread)
+    device_multithread_spin(device);
+
   else
     device_spin(device);
 
   // TODO: Restore host registers that were pinned.
   fpu_set_state(saved_fpu_state);
+}
+
+CEN64_THREAD_RETURN_TYPE run_rcp_thread(void *opaque) {
+  struct cen64_device *device = (struct cen64_device *) opaque;
+
+  if (setjmp(device->bus.unwind_data))
+    return CEN64_THREAD_RETURN_VAL;
+
+  while (1) {
+    unsigned i;
+
+    for (i = 0; i < 6250; i++) {
+      rsp_cycle(&device->rsp);
+      vi_cycle(&device->vi);
+    }
+
+    // Sync up with the VR4300 thread.
+    cen64_mutex_lock(&device->sync_mutex);
+
+    if (!device->other_thread_is_waiting) {
+      device->other_thread_is_waiting = true;
+      cen64_cv_wait(&device->sync_cv, &device->sync_mutex);
+    }
+
+    else {
+      device->other_thread_is_waiting = false;
+      cen64_mutex_unlock(&device->sync_mutex);
+      cen64_cv_signal(&device->sync_cv);
+    }
+  }
+
+  return CEN64_THREAD_RETURN_VAL;
+}
+
+CEN64_THREAD_RETURN_TYPE run_vr4300_thread(void *opaque) {
+  struct cen64_device *device = (struct cen64_device *) opaque;
+
+  while (1) {
+    unsigned i, j;
+
+    for (i = 0; i < 6250 / 2; i++) {
+      for (j = 0; j < 2; j++) {
+        ai_cycle(&device->ai);
+        pi_cycle(&device->pi);
+      }
+
+      for (j = 0; j < 3; j++)
+        vr4300_cycle(&device->vr4300);
+    }
+
+    // Sync up with the RCP thread.
+    cen64_mutex_lock(&device->sync_mutex);
+
+    if (!device->other_thread_is_waiting) {
+      device->other_thread_is_waiting = true;
+      cen64_cv_wait(&device->sync_cv, &device->sync_mutex);
+    }
+
+    else {
+      device->other_thread_is_waiting = false;
+      cen64_mutex_unlock(&device->sync_mutex);
+      cen64_cv_signal(&device->sync_cv);
+    }
+  }
+
+  return CEN64_THREAD_RETURN_VAL;
+}
+
+// Continually cycles the device until setjmp returns.
+int device_multithread_spin(struct cen64_device *device) {
+  cen64_thread vr4300_thread;
+
+  device->other_thread_is_waiting = false;
+
+  if (cen64_mutex_create(&device->sync_mutex)) {
+    printf("Failed to create the synchronization mutex.\n");
+    return 1;
+  }
+
+  if (cen64_cv_create(&device->sync_cv)) {
+    printf("Failed to create the synchronization CV.\n");
+    cen64_mutex_destroy(&device->sync_mutex);
+    return 1;
+  }
+
+  if (cen64_thread_create(&vr4300_thread, run_vr4300_thread, device)) {
+    printf("Failed to create the VR4300 thread.\n");
+    cen64_cv_destroy(&device->sync_cv);
+    cen64_mutex_destroy(&device->sync_mutex);
+    return 1;
+  }
+
+  run_rcp_thread(device);
+
+  cen64_thread_join(&vr4300_thread);
+  cen64_cv_destroy(&device->sync_cv);
+  cen64_mutex_destroy(&device->sync_mutex);
+  return 0;
 }
 
 // Continually cycles the device until setjmp returns.
@@ -155,6 +266,7 @@ int device_spin(struct cen64_device *device) {
       vr4300_cycle(&device->vr4300);
       rsp_cycle(&device->rsp);
       ai_cycle(&device->ai);
+      pi_cycle(&device->pi);
       vi_cycle(&device->vi);
 
     }
@@ -183,6 +295,7 @@ int device_debug_spin(struct cen64_device *device) {
       vr4300_cycle(&device->vr4300);
       rsp_cycle(&device->rsp);
       ai_cycle(&device->ai);
+      pi_cycle(&device->pi);
       vi_cycle(&device->vi);
 
       vr4300_cycle_extra(&device->vr4300, &vr4300_stats);

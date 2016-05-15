@@ -22,17 +22,24 @@
 #include "vr4300/interface.h"
 
 // Mask to negate second operand if subtract operation.
+#if defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__))
+static inline uint32_t rsp_addsub_mask(uint32_t iw)
+{
+  uint32_t mask;
+  __asm__("shr $2,       %k[iwiw];"
+          "sbb %k[mask], %k[mask];"
+    : [mask] "=r" (mask), [iwiw] "+r" (iw) : : "cc");
+  return mask;
+}
+#else
 cen64_align(static const uint32_t rsp_addsub_lut[4], 16) = {
   0x0U, ~0x0U, ~0x0U, ~0x0U
 };
-
-// Mask to select outputs for bitwise operations.
-cen64_align(static const uint32_t rsp_bitwise_lut[4][2], 32) = {
-  {~0U,  0U}, // AND
-  {~0U, ~0U}, // OR
-  { 0U, ~0U}, // XOR
-  { 0U,  0U}, // -
-};
+static inline uint32_t rsp_addsub_mask(uint32_t iw)
+{
+  return rsp_addsub_lut[iw & 0x2];
+}
+#endif
 
 // Mask to denote which part of the vector to load/store.
 cen64_align(static const uint16_t rsp_bdls_lut[4][4], CACHE_LINE_SIZE) = {
@@ -65,14 +72,15 @@ cen64_align(static const uint16_t rsp_qr_lut[16][8], CACHE_LINE_SIZE) = {
 };
 
 // Mask to select link address register for some branches.
-cen64_align(static const uint32_t rsp_branch_lut[2], 8) = {
-  ~0U, 0U
-};
+static inline uint32_t rsp_branch_mask(uint32_t iw, unsigned index) {
+  iw = (uint32_t)(   (int32_t)(iw << (31 - index)) >> 31  );
+  return ~iw; /* ones' complement must be done last on return */
+}
 
 // Mask to selectively sign-extend loaded values.
-cen64_align(static const uint32_t rsp_load_sex_mask[2][4], 32) = {
-  {~0U,   ~0U,     0U, ~0U}, // sex
-  {0xFFU, 0xFFFFU, 0U, ~0U}, // zex
+cen64_align(static const uint32_t rsp_load_sex_mask[8], 32) = {
+  ~0U,   ~0U,     0U, ~0U, // sex
+  0xFFU, 0xFFFFU, 0U, ~0U, // zex
 };
 
 // Function to sign-extend 6-bit values.
@@ -107,7 +115,7 @@ void RSP_ADDIU_LUI_SUBIU(struct rsp *rsp,
 void RSP_ADDU_SUBU(struct rsp *rsp,
   uint32_t iw, uint32_t rs, uint32_t rt) {
   struct rsp_exdf_latch *exdf_latch = &rsp->pipeline.exdf_latch;
-  uint32_t mask = rsp_addsub_lut[iw & 0x2];
+  uint32_t mask = rsp_addsub_mask(iw);
 
   unsigned dest;
   uint32_t rd;
@@ -128,14 +136,18 @@ void RSP_ADDU_SUBU(struct rsp *rsp,
 void RSP_AND_OR_XOR(struct rsp *rsp,
   uint32_t iw, uint32_t rs, uint32_t rt) {
   struct rsp_exdf_latch *exdf_latch = &rsp->pipeline.exdf_latch;
-  uint32_t and_mask = rsp_bitwise_lut[iw & 0x3][0];
-  uint32_t xor_mask = rsp_bitwise_lut[iw & 0x3][1];
 
   unsigned dest;
-  uint32_t rd;
+  uint32_t rd, rand, rxor;
 
   dest = GET_RD(iw);
-  rd = ((rs & rt) & and_mask) | ((rs ^ rt) & xor_mask);
+  rand = rs & rt;
+  rxor = rs ^ rt;
+  rd = rand + rxor; // lea
+  if((iw & 1) == 0) // cmov
+    rd = rxor;
+  if((iw & 3) == 0) // cmov
+    rd = rand;
 
   exdf_latch->result.result = rd;
   exdf_latch->result.dest = dest;
@@ -149,16 +161,21 @@ void RSP_AND_OR_XOR(struct rsp *rsp,
 void RSP_ANDI_ORI_XORI(struct rsp *rsp,
   uint32_t iw, uint32_t rs, uint32_t rt) {
   struct rsp_exdf_latch *exdf_latch = &rsp->pipeline.exdf_latch;
-  uint32_t and_mask = rsp_bitwise_lut[iw >> 26 & 0x3][0];
-  uint32_t xor_mask = rsp_bitwise_lut[iw >> 26 & 0x3][1];
 
   unsigned dest;
+  uint32_t rd, rand, rxor;
 
   dest = GET_RT(iw);
   rt = (uint16_t) iw;
-  rt = ((rs & rt) & and_mask) | ((rs ^ rt) & xor_mask);
+  rand = rs & rt;
+  rxor = rs ^ rt;
+  rd = rand + rxor; // lea
+  if((iw & 67108864) == 0) // cmov
+    rd = rxor;
+  if((iw & 201326592) == 0) // cmov
+    rd = rand;
 
-  exdf_latch->result.result = rt;
+  exdf_latch->result.result = rd;
   exdf_latch->result.dest = dest;
 }
 
@@ -284,9 +301,10 @@ cen64_hot void RSP_INT_MEM(struct rsp *rsp,
 
   uint32_t address = rs + (int16_t) iw;
   uint32_t sel_mask = (int32_t) (iw << 2) >> 31;
-  unsigned request_size = (iw >> 26 & 0x3);
+  unsigned request_index = (iw >> 26 & 0x7);
+  uint32_t rdqm = rsp_load_sex_mask[request_index];
+  unsigned request_size = request_index & 0x3;
   unsigned lshiftamt = (3 - request_size) << 3;
-  uint32_t rdqm = rsp_load_sex_mask[iw >> 28 & 0x1][request_size];
   uint32_t wdqm = ~0U << lshiftamt;
 
   exdf_latch->request.addr = address;
@@ -323,9 +341,8 @@ void RSP_J_JAL(struct rsp *rsp,
   struct rsp_rdex_latch *rdex_latch = &rsp->pipeline.rdex_latch;
   struct rsp_exdf_latch *exdf_latch = &rsp->pipeline.exdf_latch;
 
-  bool is_jal = iw >> 26 & 0x1;
   uint32_t target = iw << 2 & 0xFFC;
-  uint32_t mask = rsp_branch_lut[is_jal];
+  uint32_t mask = rsp_branch_mask(iw, 26); //is_jal
 
   exdf_latch->result.result = 0x1000 | ((rdex_latch->common.pc + 8) & 0xFFC);
   exdf_latch->result.dest = RSP_REGISTER_RA & ~mask;
@@ -343,8 +360,7 @@ void RSP_JALR_JR(struct rsp *rsp,
   struct rsp_rdex_latch *rdex_latch = &rsp->pipeline.rdex_latch;
   struct rsp_exdf_latch *exdf_latch = &rsp->pipeline.exdf_latch;
 
-  bool is_jalr = iw & 0x1;
-  uint32_t mask = rsp_branch_lut[is_jalr];
+  uint32_t mask = rsp_branch_mask(iw, 0); // is_jalr
   unsigned rd = GET_RD(iw);
 
   exdf_latch->result.result = 0x1000 | ((rdex_latch->common.pc + 8) & 0xFFC);
