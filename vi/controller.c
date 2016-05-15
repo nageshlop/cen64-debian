@@ -14,6 +14,7 @@
 #include "bus/controller.h"
 #include "device/device.h"
 #include "os/main.h"
+#include "timer.h"
 #include "ri/controller.h"
 #include "vi/controller.h"
 #include "vi/render.h"
@@ -55,7 +56,9 @@ int read_vi_regs(void *opaque, uint32_t address, uint32_t *word) {
 
 // Advances the controller by one clock cycle.
 void vi_cycle(struct vi_controller *vi) {
+#ifndef __APPLE__
   struct cen64_context c;
+#endif
   cen64_gl_window window;
   size_t copy_size;
 
@@ -66,7 +69,9 @@ void vi_cycle(struct vi_controller *vi) {
   if (likely(vi->counter-- != 0))
     return;
 
+#ifndef __APPLE__
   cen64_context_save(&c);
+#endif
   window = vi->window;
 
   // Calculate the bounding positions.
@@ -114,22 +119,40 @@ void vi_cycle(struct vi_controller *vi) {
     cen64_gl_window_push_frame(window);
   }
 
+  else if (++(vi->frame_count) == 60) {
+    cen64_time current_time;
+    float ns;
+
+    get_time(&current_time);
+    ns = compute_time_difference(&current_time, &vi->last_update_time);
+    vi->last_update_time = current_time;
+    vi->frame_count = 0;
+
+    printf("VI/s: %.2f\n", (60 / (ns / NS_PER_SEC)));
+  }
+
   // Raise an interrupt to indicate refresh.
   signal_rcp_interrupt(vi->bus->vr4300, MI_INTR_VI);
   vi->counter = VI_COUNTER_START;
 
+#ifndef __APPLE__
   cen64_context_restore(&c);
+#endif
 }
 
 // Initializes the VI.
-int vi_init(struct vi_controller *vi, struct bus_controller *bus) {
+int vi_init(struct vi_controller *vi,
+  struct bus_controller *bus, bool no_interface) {
   vi->counter = VI_COUNTER_START;
   vi->bus = bus;
 
-  if (vi_create_window(vi))
-    return -1;
+  if (!no_interface) {
+    if (vi_create_window(vi))
+      return -1;
 
-  gl_window_init(vi);
+    gl_window_init(vi);
+  }
+
   return 0;
 }
 

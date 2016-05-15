@@ -68,7 +68,9 @@ if (${CMAKE_C_COMPILER_ID} MATCHES GNU)
     set(CEN64_ARCH_DIR "x86_64")
     include_directories(${PROJECT_SOURCE_DIR}/os/unix/x86_64)
 
-    set(ASM_SOURCES ${PROJECT_SOURCE_DIR}/arch/x86_64/gcc/context.s)
+    if (NOT APPLE)
+      set(ASM_SOURCES ${PROJECT_SOURCE_DIR}/arch/x86_64/gcc/context.s)
+    endif ()
 #    file(GLOB ASM_SOURCES ${PROJECT_SOURCE_DIR}/arch/x86_64/rsp/gcc/*.s)
   endif (${GCC_MACHINE} MATCHES "x86.*" OR ${GCC_MACHINE} MATCHES "i.86.*")
 
@@ -129,6 +131,8 @@ if (${CMAKE_C_COMPILER_ID} MATCHES Clang)
   string(REGEX MATCH "([a-zA-Z0-9])+" CLANG_MACHINE ${CLANG_MACHINE})
 
   if (${CLANG_MACHINE} MATCHES "x86.*" OR ${CLANG_MACHINE} MATCHES "i.86.*")
+    enable_language(ASM-ATT)
+
     set(CEN64_ARCH_SUPPORT "SSE2" CACHE STRING "Architectural extension(s) to use")
     set_property(CACHE CEN64_ARCH_SUPPORT PROPERTY STRINGS SSE2 SSE3 SSSE3 SSE4.1 AVX Native)
 
@@ -148,6 +152,11 @@ if (${CMAKE_C_COMPILER_ID} MATCHES Clang)
 
     set(CEN64_ARCH_DIR "x86_64")
     include_directories(${PROJECT_SOURCE_DIR}/os/unix/x86_64)
+
+    if (NOT APPLE)
+      set(ASM_SOURCES ${PROJECT_SOURCE_DIR}/arch/x86_64/gcc/context.s)
+    endif ()
+#    file(GLOB ASM_SOURCES ${PROJECT_SOURCE_DIR}/arch/x86_64/rsp/gcc/*.s)
   endif (${CLANG_MACHINE} MATCHES "x86.*" OR ${CLANG_MACHINE} MATCHES "i.86.*")
 
   if (${CLANG_MACHINE} STREQUAL "arm")
@@ -158,7 +167,11 @@ if (${CMAKE_C_COMPILER_ID} MATCHES Clang)
   endif (${CLANG_MACHINE} STREQUAL "arm")
 
   # Set architecture-independent flags.
-  set(CMAKE_C_FLAGS_DEBUG "-ggdb3 -g3 -O0 -fsanitize=undefined")
+  if (APPLE)
+    set(CMAKE_C_FLAGS_DEBUG "-ggdb3 -g3 -O0")
+  else ()
+    set(CMAKE_C_FLAGS_DEBUG "-ggdb3 -g3 -O0 -fsanitize=undefined")
+  endif ()
   set(CMAKE_C_FLAGS_MINSIZEREL "-Os -DNDEBUG")
   set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG")
   set(CMAKE_C_FLAGS_RELWITHDEBINFO "-O3 -DNDEBUG -ggdb3 -g3")
@@ -246,7 +259,6 @@ set(AI_SOURCES
 )
 
 set(ARCH_X86_64_SOURCES
-  ${PROJECT_SOURCE_DIR}/arch/x86_64/gcc/context.s
   ${PROJECT_SOURCE_DIR}/arch/x86_64/tlb/tlb.c
   ${PROJECT_SOURCE_DIR}/arch/x86_64/rsp/vrcpsq.c
   ${PROJECT_SOURCE_DIR}/arch/x86_64/rsp/vmov.c
@@ -254,6 +266,11 @@ set(ARCH_X86_64_SOURCES
   ${PROJECT_SOURCE_DIR}/arch/x86_64/rsp/rsp.c
   ${PROJECT_SOURCE_DIR}/arch/x86_64/rsp/vrsq.c
 )
+
+if (NOT APPLE)
+  list(APPEND ARCH_X86_64_SOURCES
+    ${PROJECT_SOURCE_DIR}/arch/x86_64/gcc/context.s)
+endif ()
 
 set(BUS_SOURCES
   ${PROJECT_SOURCE_DIR}/bus/controller.c
@@ -272,9 +289,11 @@ set(DD_SOURCES
 
 set(DEVICE_SOURCES
   ${PROJECT_SOURCE_DIR}/cen64.c
+  ${PROJECT_SOURCE_DIR}/device/cart_db.c
   ${PROJECT_SOURCE_DIR}/device/device.c
   ${PROJECT_SOURCE_DIR}/device/netapi.c
   ${PROJECT_SOURCE_DIR}/device/options.c
+  ${PROJECT_SOURCE_DIR}/device/sha1.c
 )
 
 set(OS_SOURCES
@@ -284,8 +303,10 @@ set(OS_SOURCES
 
 set(OS_POSIX_SOURCES
   ${PROJECT_SOURCE_DIR}/os/posix/alloc.c
+  ${PROJECT_SOURCE_DIR}/os/posix/local_time.c
   ${PROJECT_SOURCE_DIR}/os/posix/main.c
   ${PROJECT_SOURCE_DIR}/os/posix/rom_file.c
+  ${PROJECT_SOURCE_DIR}/os/posix/save_file.c
   ${PROJECT_SOURCE_DIR}/os/posix/timer.c
 )
 
@@ -293,8 +314,10 @@ set(OS_WINAPI_SOURCES
   ${PROJECT_SOURCE_DIR}/os/winapi/alloc.c
   ${PROJECT_SOURCE_DIR}/os/winapi/gl_config.c
   ${PROJECT_SOURCE_DIR}/os/winapi/gl_window.c
+  ${PROJECT_SOURCE_DIR}/os/winapi/local_time.c
   ${PROJECT_SOURCE_DIR}/os/winapi/main.c
   ${PROJECT_SOURCE_DIR}/os/winapi/rom_file.c
+  ${PROJECT_SOURCE_DIR}/os/winapi/save_file.c
   ${PROJECT_SOURCE_DIR}/os/winapi/timer.c
 )
 
@@ -331,6 +354,10 @@ set(RSP_SOURCES
 set(SI_SOURCES
   ${PROJECT_SOURCE_DIR}/si/cic.c
   ${PROJECT_SOURCE_DIR}/si/controller.c
+  ${PROJECT_SOURCE_DIR}/si/pak.c
+  ${PROJECT_SOURCE_DIR}/si/pak_transfer.c
+  ${PROJECT_SOURCE_DIR}/si/gb.c
+  ${PROJECT_SOURCE_DIR}/si/rtc.c
 )
 
 set(VI_SOURCES

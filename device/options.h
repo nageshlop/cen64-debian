@@ -19,12 +19,21 @@ struct cen64_options {
   const char *cart_path;
   const char *debugger_addr;
 
+  const char *eeprom_path;
+  size_t eeprom_size;
+  const char *sram_path;
+  const char *flashram_path;
+
+  struct controller *controller;
+
 #ifdef _WIN32
   bool console;
 #endif
 
   bool enable_debugger;
-  bool no_interface;
+  bool multithread;
+  bool no_audio;
+  bool no_video;
 };
 
 extern const struct cen64_options default_cen64_options;
