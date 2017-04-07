@@ -41,8 +41,9 @@ static int eeprom_write(struct eeprom *eeprom, uint8_t *send_buf, uint8_t send_b
 
 // Initializes the SI.
 int si_init(struct si_controller *si, struct bus_controller *bus,
-  const uint8_t *pif_rom, const uint8_t *cart_rom, bool dd_present,
-  const uint8_t *eeprom, size_t eeprom_size,
+  const uint8_t *pif_rom, const uint8_t *cart_rom,
+  const struct dd_variant *dd_variant,
+  uint8_t *eeprom, size_t eeprom_size,
   const struct controller *controller) {
   uint32_t cic_seed;
 
@@ -61,10 +62,10 @@ int si_init(struct si_controller *si, struct bus_controller *bus,
     si->ram[0x27] = cic_seed >>  0;
   }
 
-  else if (dd_present) {
+  else if (dd_variant != NULL) {
     si->ram[0x24] = 0x00;
     si->ram[0x25] = 0x0A;
-    si->ram[0x26] = 0xDD;
+    si->ram[0x26] = dd_variant->seed; // 0xDD - JP, 0xDE - US
     si->ram[0x27] = 0x3F;
   }
 
@@ -114,8 +115,10 @@ int pif_perform_command(struct si_controller *si,
             recv_buf[1] = 0x00;
             recv_buf[2] = si->controller[channel].pak == PAK_NONE ? 0x00 : 0x01;
           }
-          else
-            recv_buf[0] = recv_buf[1] = recv_buf[2] = 0;
+          else {
+            recv_buf[0] = recv_buf[1] = recv_buf[2] = 0xFF;
+            return 1;
+          }
           break;
 
         case 4:

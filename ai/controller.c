@@ -63,13 +63,6 @@ void ai_dma(struct ai_controller *ai) {
     unsigned freq = (double) NTSC_DAC_FREQ / (ai->regs[AI_DACRATE_REG] + 1);
     unsigned samples = ai->fifo[ai->fifo_ri].length / 4;
 
-    // Need to raise an interrupt when the DMA engine
-    // is doing the last 8-byte data bus transfer...
-    //
-    // XXX: Should be > 2, I think, but don't want to
-    // risk breaking things and would need to verify.
-    ai->counter = (62500000.0 / freq) * (samples - 2);
-
     // Shovel things into the audio context.
     ALuint buffer;
     ALint val;
@@ -84,51 +77,66 @@ void ai_dma(struct ai_controller *ai) {
     // when the frequency changes underneath us, but it still
     // seems to sound better than what we had before.
     if (ai->ctx.cur_frequency != freq) {
-      if (val == sizeof(ai->ctx.buffers) / sizeof(ai->ctx.buffers[0])) {
+      if (val == 0) {
         printf("OpenAL: Switching context buffer frequency to: %u\n", freq);
         ai_switch_frequency(&ai->ctx, freq);
       }
-
-      else
-        val = 0;
     }
 
+    // Grab any buffers that have been processed (for reuse).
     if (val) {
+      alSourceUnqueueBuffers(ai->ctx.source, val,
+          ai->ctx.buffers + ai->ctx.unqueued_buffers);
+
+      ai->ctx.unqueued_buffers += val;
+    }
+
+    // Need to raise an interrupt when the DMA engine
+    // is doing the last 8-byte data bus transfer...
+
+    // This dodgy, since the RCP's audio is more or less a realtime
+    // (and CEN64 has *not* a realtime system, nor does it have a
+    // resampler that can fudge the audio around non-perfectly-timed
+    // INTs). So, for now, throw interrupts a little early to prevent
+    // popping.
+    switch (ai->ctx.unqueued_buffers) {
+
+      // We are ahead of where we want to be. Keep spinning
+      // until OpenAL has some free buffers for us.
+      case 0:
+      case 1:
+        ai->counter = (62500000.0 / freq) * samples;
+        break;
+
+      // One unprocessed buffer, one going. Try to throw the
+      // INT almost immediately when the current buffer finshes.
+      case 2:
+        ai->counter = (62500000.0 / freq) * (samples - 10);
+        break;
+
+      // No buffers, we should throw an INT almost immediately?
+      case 3:
+        ai->counter = 1;
+        break;
+    }
+
+    if (ai->ctx.unqueued_buffers > 0) {
       cen64_align(uint8_t buf[0x40000], 16);
       uint32_t length = ai->fifo[ai->fifo_ri].length;
       uint8_t *input = bus->ri->ram + ai->fifo[ai->fifo_ri].address;
       const uint8_t *buf_ptr = byteswap_audio_buffer(input, buf, length);
 
-      if (ai->ctx.unqueued_buffers > 0) {
-        buffer = ai->ctx.buffers[sizeof(ai->ctx.buffers) /
-          sizeof(ai->ctx.buffers[0]) - ai->ctx.unqueued_buffers];
-
-        ai->ctx.unqueued_buffers--;
-      }
-
-      else
-        alSourceUnqueueBuffers(ai->ctx.source, 1, &buffer);
+      ai->ctx.unqueued_buffers--;
+      buffer = ai->ctx.buffers[ai->ctx.unqueued_buffers];
 
       alBufferData(buffer, AL_FORMAT_STEREO16, buf_ptr, length, freq);
       alSourceQueueBuffers(ai->ctx.source, 1, &buffer);
-
-      if (ai->ctx.unqueued_buffers == 1) {
-        alSourcePlay(ai->ctx.source);
-      }
-
-      else {
-        alGetSourcei(ai->ctx.source, AL_SOURCE_STATE, &val);
-
-        if (val != AL_PLAYING)
-          alSourcePlay(ai->ctx.source);
-      }
-
-      if (alGetError() != AL_NO_ERROR) {
-        fprintf(stderr, "OpenAL: Reporting an error while playing sources!\n");
-        fprintf(stderr, "Disabling it from this point forward; sorry!\n");
-        ai->no_output = true;
-      }
     }
+
+    alGetSourcei(ai->ctx.source, AL_SOURCE_STATE, &val);
+
+    if (val != AL_PLAYING)
+      alSourcePlay(ai->ctx.source);
   }
 
   // If the length was zero, just interrupt now?
@@ -156,8 +164,10 @@ int ai_init(struct ai_controller *ai,
   if (!no_interface) {
     alGetError();
 
-    if (ai_context_create(&ai->ctx))
+    if (ai_context_create(&ai->ctx)) {
+      ai->no_output = 1;
       return 1;
+    }
   }
 
   return 0;

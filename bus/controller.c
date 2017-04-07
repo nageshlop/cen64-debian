@@ -34,8 +34,12 @@ struct bus_controller_mapping {
   uint32_t length;
 };
 
+static int bus_open_read(void *opaque, uint32_t address, uint32_t *word);
+static int bus_dead_write(void *opaque, uint32_t address, uint32_t word,
+  uint32_t dqm);
+
 // Initializes the bus component.
-int bus_init(struct bus_controller *bus) {
+int bus_init(struct bus_controller *bus, int dd_present) {
   unsigned i;
 
   static const struct bus_controller_mapping mappings[NUM_MAPPINGS] = {
@@ -74,20 +78,41 @@ int bus_init(struct bus_controller *bus) {
     bus->dd,
     bus->dd,
     bus->si,
-    bus->si,
     bus->ri,
     bus->rsp,
     bus->rsp,
-    bus->pi
+    bus->pi,
   };
 
   create_memory_map(&bus->map);
 
-  for (i = 0; i < NUM_MAPPINGS; i++)
-    if (map_address_range(&bus->map, mappings[i].address, mappings[i].length,
-      instances[i], mappings[i].read, mappings[i].write))
-      return 1;
+  for (i = 0; i < NUM_MAPPINGS; i++) {
+    memory_rd_function rd = mappings[i].read;
+    memory_wr_function wr = mappings[i].write;
+    void *instance = instances[i];
 
+    if (instance == bus->dd && !dd_present) {
+      rd = bus_open_read;
+      wr = bus_dead_write;
+      instance = NULL;
+    }
+
+    if (map_address_range(&bus->map, mappings[i].address, mappings[i].length,
+      instances[i], rd, wr))
+      return 1;
+  }
+
+  return 0;
+}
+
+// Open read (happens for non-mapped addresses)
+static int bus_open_read(void *opaque, uint32_t address, uint32_t *word) {
+  *word = (address >> 16) | (address & 0xFFFF0000);
+  return 0;
+}
+
+static int bus_dead_write(void *opaque, uint32_t address, uint32_t word,
+  uint32_t dqm) {
   return 0;
 }
 
@@ -104,7 +129,7 @@ int bus_read_word(void *component, uint32_t address, uint32_t *word) {
   else if ((node = resolve_mapped_address(&bus->map, address)) == NULL) {
     debug("bus_read_word: Failed to access: 0x%.8X\n", address);
 
-    *word = 0x00000000U;
+    *word = (address >> 16) | (address & 0xFFFF0000);
     return 0;
   }
 

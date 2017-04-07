@@ -24,7 +24,8 @@ const struct cen64_options default_cen64_options = {
   0,    // eeprom_size
   NULL, // sram_path
   NULL, // flashram_path
-  { { NULL, }, }, // controller
+  0,    // is_viewer_present
+  NULL, // controller
 #ifdef _WIN32
   false, // console
 #endif
@@ -51,7 +52,7 @@ int parse_options(struct cen64_options *options, int argc, const char *argv[]) {
       options->enable_debugger = true;
 
       // Check for optional host:port pair.
-      if ((i + 1) >= (argc - 1) && argv[i + 1][0] != '-')
+      if ((i + 1) <= (argc - 1) && argv[i + 1][0] != '-')
         options->debugger_addr = argv[++i];
 
       else
@@ -128,9 +129,12 @@ int parse_options(struct cen64_options *options, int argc, const char *argv[]) {
       options->flashram_path = argv[++i];
     }
 
+    else if (!strcmp(argv[i], "-is-viewer"))
+      options->is_viewer_present = 1;
+
     else if (!strcmp(argv[i], "-controller")) {
       int num;
-      struct controller opt = { NULL, };
+      struct controller opt = { 0, };
 
       if ((i + 1) >= (argc - 1)) {
         printf("-controller requires a controller description.\n\n");
@@ -250,6 +254,7 @@ void print_command_line_usage(const char *invokation_string) {
 #endif
       "  -debug [addr][:port]       : Starts the debugger on interface:port.\n"
       "                               By default, CEN64 uses localhost:64646.\n"
+      "                               NOTE: the debugger is not implemented yet.\n"
       "  -multithread               : Run in a threaded (but quasi-accurate) mode.\n"
       "                             : This mode cannot be run with the debugger.\n"
       "  -ddipl <path>              : Path to the 64DD IPL ROM (enables 64DD mode).\n"
@@ -257,6 +262,7 @@ void print_command_line_usage(const char *invokation_string) {
       "  -headless                  : Run emulator without user-interface components.\n"
       "  -noaudio                   : Run emulator without audio.\n"
       "  -novideo                   : Run emulator without video.\n"
+      "  -is-viewer                 : IS Viewer 64 present.\n"
       "\n"
       "Controller Options:\n"
       "  -controller num=<1-4>      : Controller with no pak.\n"

@@ -29,6 +29,7 @@
 #include "vr4300/cp1.h"
 #include <setjmp.h>
 
+cen64_cold int angrylion_rdp_init(struct cen64_device *device);
 cen64_cold static int device_debug_spin(struct cen64_device *device);
 cen64_cold static int device_multithread_spin(struct cen64_device *device);
 cen64_flatten cen64_hot static int device_spin(struct cen64_device *device);
@@ -38,10 +39,12 @@ cen64_flatten cen64_hot static CEN64_THREAD_RETURN_TYPE run_vr4300_thread(void *
 
 // Creates and initializes a device.
 struct cen64_device *device_create(struct cen64_device *device,
-  const struct rom_file *ddipl, const struct rom_file *ddrom,
+  const struct rom_file *ddipl, const struct dd_variant *dd_variant,
+  const struct rom_file *ddrom,
   const struct rom_file *pifrom, const struct rom_file *cart,
   const struct save_file *eeprom, const struct save_file *sram,
-  const struct save_file *flashram, const struct controller *controller,
+  const struct save_file *flashram, const struct is_viewer *is,
+  const struct controller *controller,
   bool no_audio, bool no_video) {
 
   // Initialize the bus.
@@ -57,7 +60,7 @@ struct cen64_device *device_create(struct cen64_device *device,
   device->bus.vr4300 = &device->vr4300;
 
   // Initialize the bus.
-  if (bus_init(&device->bus)) {
+  if (bus_init(&device->bus, dd_variant != NULL)) {
     debug("create_device: Failed to initialize the bus.\n");
     return NULL;
   }
@@ -76,7 +79,7 @@ struct cen64_device *device_create(struct cen64_device *device,
   }
 
   // Initialize the PI.
-  if (pi_init(&device->pi, &device->bus, cart->ptr, cart->size, sram, flashram)) {
+  if (pi_init(&device->pi, &device->bus, cart->ptr, cart->size, sram, flashram, is)) {
     debug("create_device: Failed to initialize the PI.\n");
     return NULL;
   }
@@ -89,7 +92,7 @@ struct cen64_device *device_create(struct cen64_device *device,
 
   // Initialize the SI.
   if (si_init(&device->si, &device->bus, pifrom->ptr,
-    cart->ptr, ddipl->ptr != NULL, eeprom->ptr, eeprom->size,
+    cart->ptr, dd_variant, eeprom->ptr, eeprom->size,
     controller)) {
     debug("create_device: Failed to initialize the SI.\n");
     return NULL;
@@ -119,6 +122,7 @@ struct cen64_device *device_create(struct cen64_device *device,
     return NULL;
   }
 
+  angrylion_rdp_init(device);
   return device;
 }
 
@@ -162,7 +166,7 @@ CEN64_THREAD_RETURN_TYPE run_rcp_thread(void *opaque) {
   if (setjmp(device->bus.unwind_data))
     return CEN64_THREAD_RETURN_VAL;
 
-  while (1) {
+  while (likely(device->running)) {
     unsigned i;
 
     for (i = 0; i < 6250; i++) {
@@ -191,7 +195,7 @@ CEN64_THREAD_RETURN_TYPE run_rcp_thread(void *opaque) {
 CEN64_THREAD_RETURN_TYPE run_vr4300_thread(void *opaque) {
   struct cen64_device *device = (struct cen64_device *) opaque;
 
-  while (1) {
+  while (likely(device->running)) {
     unsigned i, j;
 
     for (i = 0; i < 6250 / 2; i++) {
@@ -259,7 +263,7 @@ int device_spin(struct cen64_device *device) {
   if (setjmp(device->bus.unwind_data))
     return 1;
 
-  while (1) {
+  while (likely(device->running)) {
     unsigned i;
 
     for (i = 0; i < 2; i++) {
@@ -288,7 +292,7 @@ int device_debug_spin(struct cen64_device *device) {
   if (setjmp(device->bus.unwind_data))
     return 1;
 
-  while (1) {
+  while (likely(device->running)) {
     unsigned i;
 
     for (i = 0; i < 2; i++) {

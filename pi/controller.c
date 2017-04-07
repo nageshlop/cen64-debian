@@ -13,6 +13,7 @@
 #include "bus/controller.h"
 #include "dd/controller.h"
 #include "pi/controller.h"
+#include "pi/is_viewer.h"
 #include "ri/controller.h"
 #include "vr4300/interface.h"
 #include <assert.h>
@@ -68,7 +69,7 @@ static int pi_dma_read(struct pi_controller *pi) {
 
     // SRAM
     if (pi->sram->ptr != NULL && addr + length <= 0x8000)
-      memcpy(pi->sram->ptr + addr, pi->bus->ri->ram + source, length);
+      memcpy((uint8_t *) (pi->sram->ptr) + addr, pi->bus->ri->ram + source, length);
 
     // FlashRAM: Save the RDRAM destination address. Writing happens
     // after the system sends the flash write command (handled in
@@ -109,7 +110,7 @@ static int pi_dma_write(struct pi_controller *pi) {
     uint32_t addr = source & 0x00FFFFF;
 
     if (pi->sram->ptr != NULL && addr + length <= 0x8000)
-      memcpy(pi->bus->ri->ram + dest, pi->sram->ptr + addr, length);
+      memcpy(pi->bus->ri->ram + dest, (const uint8_t *) (pi->sram->ptr) + addr, length);
 
     else if (pi->flashram.data != NULL) {
       // SRAM
@@ -130,8 +131,17 @@ static int pi_dma_write(struct pi_controller *pi) {
 
   else if (pi->rom) {
     if (source + length > pi->rom_size) {
+      unsigned i;
+
+      // TODO: Check for correctness against hardware.
+      // Is this the right address to use for open bus?
+      for (i = (pi->regs[PI_CART_ADDR_REG] + pi->rom_size + 3) & ~0x3;
+          i < pi->regs[PI_CART_ADDR_REG] + length; i += 4) {
+        uint32_t word = (i >> 16) | (i & 0xFFFF0000);
+        memcpy(pi->bus->ri->ram + dest + i, &word, sizeof(word));
+      }
+
       length = pi->rom_size - source;
-      //assert(0);
     }
 
     // TODO: Very hacky.
@@ -145,13 +155,14 @@ static int pi_dma_write(struct pi_controller *pi) {
 // Initializes the PI.
 int pi_init(struct pi_controller *pi, struct bus_controller *bus,
   const uint8_t *rom, size_t rom_size, const struct save_file *sram,
-  const struct save_file *flashram) {
+  const struct save_file *flashram, struct is_viewer *is_viewer) {
   pi->bus = bus;
   pi->rom = rom;
   pi->rom_size = rom_size;
   pi->sram = sram;
   pi->flashram_file = flashram;
   pi->flashram.data = flashram->ptr;
+  pi->is_viewer = is_viewer;
 
   pi->bytes_to_copy = 0;
   return 0;
@@ -162,10 +173,13 @@ int read_cart_rom(void *opaque, uint32_t address, uint32_t *word) {
   struct pi_controller *pi = (struct pi_controller *) opaque;
   unsigned offset = (address - ROM_CART_BASE_ADDRESS) & ~0x3;
 
+  if (pi->is_viewer && is_viewer_map(pi->is_viewer, address))
+    return read_is_viewer(pi->is_viewer, address, word);
+
   // TODO: Need to figure out correct behaviour.
   // Should this even happen to begin with?
-  if (pi->rom == NULL || offset > pi->rom_size - sizeof(*word)) {
-    *word = 0;
+  if (pi->rom == NULL || offset > (pi->rom_size - sizeof(*word))) {
+    *word = (address >> 16) | (address & 0xFFFF0000);
     return 0;
   }
 
@@ -188,7 +202,11 @@ int read_pi_regs(void *opaque, uint32_t address, uint32_t *word) {
 
 // Writes a word to cartridge ROM.
 int write_cart_rom(void *opaque, uint32_t address, uint32_t word, uint32_t dqm) {
-  //assert(0 && "Attempt to write to cart ROM.");
+  struct pi_controller *pi = (struct pi_controller *) opaque;
+
+  if (pi->is_viewer && is_viewer_map(pi->is_viewer, address))
+    return write_is_viewer(pi->is_viewer, address, word, dqm);
+
   return 0;
 }
 

@@ -390,9 +390,7 @@ int write_dd_ipl_rom(void *opaque, uint32_t address, uint32_t word, uint32_t dqm
 }
 
 // Reads a word from the DD C2S/DS buffer.
-int read_dd_controller(void *opaque, uint32_t address, uint32_t *word) {
-  struct dd_controller *dd = (struct dd_controller *) opaque;
-
+int read_dd_controller(void *unused(opaque), uint32_t address, uint32_t *word) {
   // XXX: Hack to reduce memorymap entries.
   if (address >= DD_MS_RAM_ADDRESS)
     return read_dd_ms_ram(opaque, address, word);
@@ -406,9 +404,7 @@ int read_dd_controller(void *opaque, uint32_t address, uint32_t *word) {
 }
 
 // Writes a word to the DD C2S/DS BUFFER.
-int write_dd_controller(void *opaque, uint32_t address, uint32_t word, uint32_t dqm) {
-  struct dd_controller *dd = (struct dd_controller *) opaque;
-
+int write_dd_controller(void *unused(opaque), uint32_t address, uint32_t word, uint32_t dqm) {
   // XXX: Hack to reduce memorymap entries.
   if (address >= DD_MS_RAM_ADDRESS)
     return write_dd_ms_ram(opaque, address, word, dqm);
@@ -422,17 +418,13 @@ int write_dd_controller(void *opaque, uint32_t address, uint32_t word, uint32_t 
 }
 
 // Reads a word from the DD MS RAM.
-int read_dd_ms_ram(void *opaque, uint32_t address, uint32_t *word) {
-  struct dd_controller *dd = (struct dd_controller *) opaque;
-
+int read_dd_ms_ram(void *unused(opaque), uint32_t address, uint32_t *word) {
   debug_mmio_read(dd, "DD_MS_RAM", *word);
   return 0;
 }
 
 // Writes a word to the DD MS RAM.
-int write_dd_ms_ram(void *opaque, uint32_t address, uint32_t word, uint32_t dqm) {
-  struct dd_controller *dd = (struct dd_controller *) opaque;
-
+int write_dd_ms_ram(void *unused(opaque), uint32_t address, uint32_t word, uint32_t dqm) {
   debug_mmio_write(dd, "DD_MS_RAM", word, dqm);
   return 0;
 }
@@ -594,4 +586,61 @@ void get_dd_time(uint8_t *out) {
   out[4] = byte2bcd(now.min);
   out[5] = byte2bcd(now.sec);
 
+}
+
+#define COUNT_OF(x) ((sizeof(x)/sizeof(0[x])) / ((size_t)(!(sizeof(x) % sizeof(0[x])))))
+
+const struct dd_variant *dd_identify_variant(struct rom_file *ipl) {
+  static struct dd_variant variants[] = {
+    {
+      "Japanese Retail (v1.2)",
+      0xDD,
+      { 0xbf, 0x86, 0x19, 0x22, 0xdc, 0xb7, 0x8c, 0x31, 0x63, 0x60,
+        0xe3, 0xe7, 0x42, 0xf4, 0xf7, 0x0f, 0xf6, 0x3c, 0x9b, 0xc3, },
+    }, {
+      "USA Retail Prototype",
+      0xDE,
+      { 0x3c, 0x5b, 0x93, 0xca, 0x23, 0x15, 0x50, 0xc6, 0x86, 0x93,
+        0xa1, 0x4f, 0x03, 0xce, 0xa8, 0xd5, 0xdb, 0xd1, 0xbe, 0x9e, },
+    }, {
+      "Japanese Dev (v1.0) [DOES NOT BOOT]",
+      0xDD,
+      { 0x58, 0x67, 0x0c, 0x00, 0x63, 0x79, 0x3a, 0x8f, 0x3b, 0xe9,
+        0x57, 0xd7, 0x1d, 0x93, 0x7b, 0x61, 0x88, 0x29, 0xba, 0x9e, },
+    }, {
+      "Japanese Dev (v1.1)",
+      0xDD,
+      { 0xb3, 0xe2, 0x6d, 0xbb, 0x4e, 0x94, 0x5f, 0x78, 0xc9, 0x18,
+        0xfa, 0xbc, 0x5b, 0x9e, 0x60, 0xfc, 0xf2, 0x62, 0xc4, 0x7b, },
+    }, {
+      "Japanese TOOL",
+      0xDD,
+      { 0x10, 0xc4, 0x17, 0x3c, 0x2a, 0x7e, 0xb0, 0x9c, 0x65, 0x79,
+        0x81, 0x8f, 0x72, 0xef, 0x18, 0xfa, 0x0b, 0x6d, 0x32, 0xde, },
+    },
+  };
+  static struct dd_variant unknown = { "Unknown", 0xDD, { 0, } };
+
+  unsigned long i;
+  uint8_t sha1_calc[20];
+  struct dd_variant *variant = NULL;
+
+  if (ipl == NULL || ipl->ptr == NULL)
+    return NULL;
+  if (ipl->size != 0x400000)
+    return &unknown;
+
+  sha1(ipl->ptr, ipl->size, sha1_calc);
+
+  for (i = 0; i < COUNT_OF(variants); ++i) {
+    if (memcmp(sha1_calc, variants[i].sha1, SHA1_SIZE) == 0) {
+      variant = &variants[i];
+      break;
+    }
+  }
+
+  if (variant == NULL)
+    variant = &unknown;
+
+  return variant;
 }
