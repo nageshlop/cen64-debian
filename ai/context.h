@@ -11,15 +11,15 @@
 #ifndef CEN64_AI_CONTEXT_H
 #define CEN64_AI_CONTEXT_H
 #include "common.h"
-#include <AL/al.h>
-#include <AL/alc.h>
+#include <al.h>
+#include <alc.h>
 
 struct cen64_ai_context {
-  ALuint buffers[2];
+  ALuint buffers[3];
+  ALuint unqueued_buffers;
   ALuint cur_frequency;
   ALuint frequency;
   ALuint source;
-  ALuint unqueued_buffers;
 
   ALCdevice *dev;
   ALCcontext *ctx;

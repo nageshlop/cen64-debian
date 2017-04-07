@@ -9,8 +9,9 @@
 cmake_minimum_required(VERSION 2.8)
 project(cen64 C)
 
+set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/Modules" ${CMAKE_MODULE_PATH})
+
 if(APPLE)
-  set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/Modules" ${CMAKE_MODULE_PATH})
   find_package(OpenGLXQuartz REQUIRED)
   # Needed for signal.h on OS X.
   add_definitions(-D_DARWIN_C_SOURCE)
@@ -20,6 +21,9 @@ endif(APPLE)
 
 find_package(OpenAL REQUIRED)
 find_package(Threads REQUIRED)
+if (NOT WIN32)
+  find_package(Iconv REQUIRED)
+endif ()
 
 # If using GCC, configure it accordingly.
 if (${CMAKE_C_COMPILER_ID} MATCHES GNU)
@@ -32,30 +36,21 @@ if (${CMAKE_C_COMPILER_ID} MATCHES GNU)
   string(REGEX MATCH "([a-zA-Z0-9])+" GCC_MACHINE ${GCC_MACHINE})
 
   if (${GCC_MACHINE} MATCHES "x86.*" OR ${GCC_MACHINE} MATCHES "i.86.*")
-    enable_language(ASM-ATT)
-
-    set(CEN64_ARCH_SUPPORT "SSE2" CACHE STRING "Architectural extension(s) to use")
-    set_property(CACHE CEN64_ARCH_SUPPORT PROPERTY STRINGS SSE2 SSE3 SSSE3 SSE4.1 AVX)
-
-    if (WIN32)
-      set(CMAKE_ASM-ATT_FLAGS "${CMAKE_ASM-ATT_FLAGS} -defsym __MINGW__=1")
-    endif (WIN32)
+    set(CEN64_ARCH_SUPPORT "Native" CACHE STRING "Architectural extension(s) to use")
+    set_property(CACHE CEN64_ARCH_SUPPORT PROPERTY STRINGS Native AVX SSE4.1 SSSE3 SSE3 SSE2)
 
     if (${CEN64_ARCH_SUPPORT} MATCHES "SSE2")
       set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -msse2")
-      set(CMAKE_ASM-ATT_FLAGS "${CMAKE_ASM-ATT_FLAGS} -march=sse2 --defsym __SSE2__=1")
     elseif (${CEN64_ARCH_SUPPORT} MATCHES "SSSE3")
       set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mssse3")
-      set(CMAKE_ASM-ATT_FLAGS "${CMAKE_ASM-ATT_FLAGS} -march=ssse3 --defsym __SSSE3__=1 --defsym __SSE3__=1")
     elseif (${CEN64_ARCH_SUPPORT} MATCHES "SSE3")
       set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -msse3")
-      set(CMAKE_ASM-ATT_FLAGS "${CMAKE_ASM-ATT_FLAGS} -march=sse3 --defsym __SSE3__=1 --defsym __SSE2__=1")
     elseif (${CEN64_ARCH_SUPPORT} MATCHES "SSE4.1")
       set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -msse4")
-      set(CMAKE_ASM-ATT_FLAGS "${CMAKE_ASM-ATT_FLAGS} -march=sse4.1 --defsym __SSE4_1__=1 --defsym __SSSE3__=1 --defsym __SSE3__=1")
     elseif (${CEN64_ARCH_SUPPORT} MATCHES "AVX")
       set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mavx")
-      set(CMAKE_ASM-ATT_FLAGS "${CMAKE_ASM-ATT_FLAGS} -march=avx --defsym __AVX__=1")
+    elseif (${CEN64_ARCH_SUPPORT} MATCHES "Native")
+      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native")
     endif ()
 
     if (${GCC_MACHINE} MATCHES "i.86.*" OR ${GCC_MACHINE} MATCHES "x86.*")
@@ -67,11 +62,6 @@ if (${CMAKE_C_COMPILER_ID} MATCHES GNU)
 
     set(CEN64_ARCH_DIR "x86_64")
     include_directories(${PROJECT_SOURCE_DIR}/os/unix/x86_64)
-
-    if (NOT APPLE)
-      set(ASM_SOURCES ${PROJECT_SOURCE_DIR}/arch/x86_64/gcc/context.s)
-    endif ()
-#    file(GLOB ASM_SOURCES ${PROJECT_SOURCE_DIR}/arch/x86_64/rsp/gcc/*.s)
   endif (${GCC_MACHINE} MATCHES "x86.*" OR ${GCC_MACHINE} MATCHES "i.86.*")
 
   if (${GCC_MACHINE} STREQUAL "arm")
@@ -131,10 +121,8 @@ if (${CMAKE_C_COMPILER_ID} MATCHES Clang)
   string(REGEX MATCH "([a-zA-Z0-9])+" CLANG_MACHINE ${CLANG_MACHINE})
 
   if (${CLANG_MACHINE} MATCHES "x86.*" OR ${CLANG_MACHINE} MATCHES "i.86.*")
-    enable_language(ASM-ATT)
-
-    set(CEN64_ARCH_SUPPORT "SSE2" CACHE STRING "Architectural extension(s) to use")
-    set_property(CACHE CEN64_ARCH_SUPPORT PROPERTY STRINGS SSE2 SSE3 SSSE3 SSE4.1 AVX Native)
+    set(CEN64_ARCH_SUPPORT "Native" CACHE STRING "Architectural extension(s) to use")
+    set_property(CACHE CEN64_ARCH_SUPPORT PROPERTY STRINGS Native AVX SSE4.1 SSSE3 SSE3 SSE2)
 
     if (${CEN64_ARCH_SUPPORT} MATCHES "SSE2")
       set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -msse2")
@@ -152,11 +140,6 @@ if (${CMAKE_C_COMPILER_ID} MATCHES Clang)
 
     set(CEN64_ARCH_DIR "x86_64")
     include_directories(${PROJECT_SOURCE_DIR}/os/unix/x86_64)
-
-    if (NOT APPLE)
-      set(ASM_SOURCES ${PROJECT_SOURCE_DIR}/arch/x86_64/gcc/context.s)
-    endif ()
-#    file(GLOB ASM_SOURCES ${PROJECT_SOURCE_DIR}/arch/x86_64/rsp/gcc/*.s)
   endif (${CLANG_MACHINE} MATCHES "x86.*" OR ${CLANG_MACHINE} MATCHES "i.86.*")
 
   if (${CLANG_MACHINE} STREQUAL "arm")
@@ -185,8 +168,8 @@ endif (${CMAKE_C_COMPILER_ID} MATCHES Clang)
 if (${CMAKE_C_COMPILER_ID} MATCHES Intel)
   set(CMAKE_C_FLAGS "-Wall -Wno-unused-parameter -std=c99")
 
-  set(CEN64_ARCH_SUPPORT "SSE2" CACHE STRING "Architectural extension(s) to use")
-  set_property(CACHE CEN64_ARCH_SUPPORT PROPERTY STRINGS SSE2 SSE3 SSSE3 SSE4.1 AVX Native)
+  set(CEN64_ARCH_SUPPORT "Native" CACHE STRING "Architectural extension(s) to use")
+  set_property(CACHE CEN64_ARCH_SUPPORT PROPERTY STRINGS Native SSE4.1 SSSE3 SSE3 SSE2)
 
     if (${CEN64_ARCH_SUPPORT} MATCHES "SSE2")
       set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -xSSE2")
@@ -216,7 +199,7 @@ endif (${CMAKE_C_COMPILER_ID} MATCHES Intel)
 # If using MSVC, configure it accordingly.
 if (MSVC)
   set(CEN64_ARCH_SUPPORT "SSE2" CACHE STRING "Architectural extension(s) to use")
-  set_property(CACHE CEN64_ARCH_SUPPORT PROPERTY STRINGS SSE2 SSE3 SSSE3 SSE4.1 AVX)
+  set_property(CACHE CEN64_ARCH_SUPPORT PROPERTY STRINGS AVX SSE4.1 SSSE3 SSE3 SSE2)
 
   if (${CEN64_ARCH_SUPPORT} MATCHES "SSE2")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /D__SSE2__")
@@ -241,7 +224,13 @@ endif (MSVC)
 option(DEBUG_MMIO_REGISTER_ACCESS "Print message on each MMIO register access?" OFF)
 
 # Use VR4300's busy-wait-detection feature?
-option(VR4300_BUSY_WAIT_DETECTION "Detect and special case VR4300 busy wait loops?" OFF)
+option(VR4300_BUSY_WAIT_DETECTION "Detect and special case VR4300 busy wait loops?" ON)
+
+# Build RelWithDebInfo by default so builds are fast out of the box
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING
+      "Choose the type of build, options are: Debug Release RelWithDebInfo MinSizeRel." FORCE)
+endif(NOT CMAKE_BUILD_TYPE)
 
 # Glob all the files together.
 include_directories(${PROJECT_BINARY_DIR})
@@ -266,11 +255,6 @@ set(ARCH_X86_64_SOURCES
   ${PROJECT_SOURCE_DIR}/arch/x86_64/rsp/rsp.c
   ${PROJECT_SOURCE_DIR}/arch/x86_64/rsp/vrsq.c
 )
-
-if (NOT APPLE)
-  list(APPEND ARCH_X86_64_SOURCES
-    ${PROJECT_SOURCE_DIR}/arch/x86_64/gcc/context.s)
-endif ()
 
 set(BUS_SOURCES
   ${PROJECT_SOURCE_DIR}/bus/controller.c
@@ -303,6 +287,7 @@ set(OS_SOURCES
 
 set(OS_POSIX_SOURCES
   ${PROJECT_SOURCE_DIR}/os/posix/alloc.c
+  ${PROJECT_SOURCE_DIR}/os/posix/cpuid.c
   ${PROJECT_SOURCE_DIR}/os/posix/local_time.c
   ${PROJECT_SOURCE_DIR}/os/posix/main.c
   ${PROJECT_SOURCE_DIR}/os/posix/rom_file.c
@@ -312,6 +297,7 @@ set(OS_POSIX_SOURCES
 
 set(OS_WINAPI_SOURCES
   ${PROJECT_SOURCE_DIR}/os/winapi/alloc.c
+  ${PROJECT_SOURCE_DIR}/os/winapi/cpuid.c
   ${PROJECT_SOURCE_DIR}/os/winapi/gl_config.c
   ${PROJECT_SOURCE_DIR}/os/winapi/gl_window.c
   ${PROJECT_SOURCE_DIR}/os/winapi/local_time.c
@@ -328,11 +314,13 @@ set(OS_X11_SOURCES
 
 set(PI_SOURCES
   ${PROJECT_SOURCE_DIR}/pi/controller.c
+  ${PROJECT_SOURCE_DIR}/pi/is_viewer.c
 )
 
 set(RDP_SOURCES
   ${PROJECT_SOURCE_DIR}/rdp/cpu.c
   ${PROJECT_SOURCE_DIR}/rdp/interface.c
+  ${PROJECT_SOURCE_DIR}/rdp/n64video.c
 )
 
 set(RI_SOURCES
@@ -387,7 +375,11 @@ set(VR4300_SOURCES
 if (DEFINED WIN32)
   include_directories(${PROJECT_SOURCE_DIR}/os/winapi)
   set(EXTRA_OS_EXE WIN32)
-  set(EXTRA_OS_LIBS mingw32 opengl32 winmm ws2_32)
+  if (NOT MSVC)
+    set(EXTRA_OS_LIBS mingw32 opengl32 winmm ws2_32)
+  else ()
+    set(EXTRA_OS_LIBS opengl32 winmm ws2_32)
+  endif ()
 
   list(APPEND OS_SOURCES
     ${OS_COMMON_SOURCES}
@@ -427,8 +419,13 @@ configure_file(
 #
 # Create the executable.
 #
+if (NOT MSVC)
+  set_source_files_properties(${PROJECT_SOURCE_DIR}/rdp/n64video.c PROPERTIES COMPILE_FLAGS -fno-strict-aliasing)
+endif (NOT MSVC)
+
 add_executable(cen64
   ${EXTRA_OS_EXE}
+  ${ASM_SOURCES}
   ${AI_SOURCES}
   ${ARCH_X86_64_SOURCES}
   ${BUS_SOURCES}
@@ -449,6 +446,7 @@ target_link_libraries(cen64
 	${EXTRA_OS_LIBS}
   ${OPENAL_LIBRARY}
   ${OPENGL_gl_LIBRARY}
+  ${ICONV_LIBRARIES}
   ${X11_X11_LIB}
   ${CMAKE_THREAD_LIBS_INIT}
 )

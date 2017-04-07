@@ -35,16 +35,20 @@
  * implemented by Jun-ichiro itojun Itoh <itojun@itojun.org>
  */
 
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <string.h>
 #include <sys/types.h>
 #include <sys/cdefs.h>
 #include <sys/time.h>
+#endif
 
 #include "sha1.h"
 
 /* XXX: hacky */
 #ifdef _WIN32
-#define BYTE_ORDER LITTLE_ENDIAN
+#define BYTE_ORDER_IS_LITTLE_ENDIAN
 
 static inline bcopy(const uint8_t *src, uint8_t *dest, size_t len) {
   size_t i;
@@ -52,16 +56,11 @@ static inline bcopy(const uint8_t *src, uint8_t *dest, size_t len) {
   for (i = 0; i < len; i++)
     dest[i] = src[i];
 }
+#else
+#if BYTE_ORDER == LITTLE_ENDIAN
+#define BYTE_ORDER_IS_LITTLE_ENDIAN
 #endif
-
-/* sanity check */
-#if BYTE_ORDER != BIG_ENDIAN
-# if BYTE_ORDER != LITTLE_ENDIAN
-#  define unsupported 1
-# endif
 #endif
-
-#ifndef unsupported
 
 /* constant table */
 static uint32_t _K[] = { 0x5a827999, 0x6ed9eba1, 0x8f1bbcdc, 0xca62c1d6 };
@@ -106,7 +105,7 @@ sha1_step(ctxt)
 	size_t t, s;
 	uint32_t	tmp;
 
-#if BYTE_ORDER == LITTLE_ENDIAN
+#ifdef BYTE_ORDER_IS_LITTLE_ENDIAN
 	struct sha1_ctxt tctxt;
 	bcopy(&ctxt->m.b8[0], &tctxt.m.b8[0], 64);
 	ctxt->m.b8[0] = tctxt.m.b8[3]; ctxt->m.b8[1] = tctxt.m.b8[2];
@@ -217,7 +216,7 @@ sha1_pad(ctxt)
 	memset(&ctxt->m.b8[padstart], 0, padlen - 8);
 	COUNT += (padlen - 8);
 	COUNT %= 64;
-#if BYTE_ORDER == BIG_ENDIAN
+#ifndef BYTE_ORDER_IS_LITTLE_ENDIAN
 	PUTPAD(ctxt->c.b8[0]); PUTPAD(ctxt->c.b8[1]);
 	PUTPAD(ctxt->c.b8[2]); PUTPAD(ctxt->c.b8[3]);
 	PUTPAD(ctxt->c.b8[4]); PUTPAD(ctxt->c.b8[5]);
@@ -264,7 +263,7 @@ sha1_result(ctxt, digest)
 	uint8_t *digest;
 {
 	sha1_pad(ctxt);
-#if BYTE_ORDER == BIG_ENDIAN
+#ifndef BYTE_ORDER_IS_LITTLE_ENDIAN
 	bcopy(&ctxt->h.b8[0], digest, 20);
 #else
 	digest[0] = ctxt->h.b8[3]; digest[1] = ctxt->h.b8[2];
@@ -285,10 +284,9 @@ extern void sha1(data, size, digest)
     size_t size;
     uint8_t *digest;
 {
-  struct sha1_ctxt ctx = { 0, };
+  struct sha1_ctxt ctx;
   sha1_init(&ctx);
   sha1_loop(&ctx, data, size);
   sha1_result(&ctx, digest);
 }
 
-#endif /*unsupported*/

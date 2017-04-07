@@ -10,8 +10,6 @@
 
 #include "common.h"
 #include "ai/context.h"
-#include <AL/al.h>
-#include <AL/alc.h>
 
 // Creates and initializes an audio context.
 int ai_context_create(struct cen64_ai_context *context) {
@@ -64,33 +62,9 @@ int ai_context_create(struct cen64_ai_context *context) {
     alBufferData(context->buffers[i], AL_FORMAT_STEREO16,
       buf, sizeof(buf), context->cur_frequency);
 
-  alSourceQueueBuffers(context->source,
-    sizeof(context->buffers) / sizeof(*context->buffers),
-    context->buffers);
+  context->unqueued_buffers = sizeof(context->buffers) /
+    sizeof(*context->buffers);
 
-  alSourcePlay(context->source);
-
-  if (alGetError() != AL_NO_ERROR) {
-    ai_context_destroy(context);
-    return 1;
-  }
-
-  // Now wait for them to drain.
-  while (1) {
-    ALint val;
-
-    alGetSourcei(context->source, AL_BUFFERS_PROCESSED, &val);
-
-    if (val == (sizeof(context->buffers) / sizeof(*context->buffers)))
-      break;
-  }
-
-  if (alGetError() != AL_NO_ERROR) {
-    ai_context_destroy(context);
-    return 1;
-  }
-
-  context->unqueued_buffers = 0;
   return 0;
 }
 
@@ -116,6 +90,7 @@ int ai_switch_frequency(struct cen64_ai_context *context, ALint frequency) {
   alGenSources(1, &context->source);
 
   context->cur_frequency = frequency;
+
   context->unqueued_buffers = sizeof(context->buffers) /
     sizeof(*context->buffers);
 
