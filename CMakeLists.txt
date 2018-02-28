@@ -19,11 +19,9 @@ else(APPLE)
   find_package(OpenGL REQUIRED)
 endif(APPLE)
 
+find_package(Iconv REQUIRED)
 find_package(OpenAL REQUIRED)
 find_package(Threads REQUIRED)
-if (NOT WIN32)
-  find_package(Iconv REQUIRED)
-endif ()
 
 # If using GCC, configure it accordingly.
 if (${CMAKE_C_COMPILER_ID} MATCHES GNU)
@@ -53,10 +51,10 @@ if (${CMAKE_C_COMPILER_ID} MATCHES GNU)
       set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native")
     endif ()
 
-    if (${GCC_MACHINE} MATCHES "i.86.*" OR ${GCC_MACHINE} MATCHES "x86.*")
-      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ffixed-xmm8 -ffixed-xmm9 -ffixed-xmm10")
-      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ffixed-xmm11 -ffixed-xmm12 -ffixed-xmm13 -ffixed-xmm14 -ffixed-xmm15")
-    endif (${GCC_MACHINE} MATCHES "i.86.*" OR ${GCC_MACHINE} MATCHES "x86.*")
+#    if (${GCC_MACHINE} MATCHES "i.86.*" OR ${GCC_MACHINE} MATCHES "x86.*")
+#      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ffixed-xmm8 -ffixed-xmm9 -ffixed-xmm10")
+#      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ffixed-xmm11 -ffixed-xmm12 -ffixed-xmm13 -ffixed-xmm14 -ffixed-xmm15")
+#    endif (${GCC_MACHINE} MATCHES "i.86.*" OR ${GCC_MACHINE} MATCHES "x86.*")
 
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -maccumulate-outgoing-args")
 
@@ -237,7 +235,9 @@ include_directories(${PROJECT_BINARY_DIR})
 include_directories(${PROJECT_SOURCE_DIR})
 include_directories(${PROJECT_SOURCE_DIR}/arch/${CEN64_ARCH_DIR})
 include_directories(${PROJECT_SOURCE_DIR}/os/common)
+include_directories(${ICONV_INCLUDE_DIR})
 include_directories(${OPENAL_INCLUDE_DIR})
+include_directories(${OPENGL_INCLUDE_DIR})
 
 #
 # Create lists of files.

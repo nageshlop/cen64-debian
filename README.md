@@ -2,6 +2,13 @@
   <img src="/assets/logo.png" />
 </p>
 
+# Just give me a copy!
+* Windows: https://www.cen64.com/uploads/stable/cen64-windows-x86_64.exe
+* Linux: https://www.cen64.com/uploads/stable/cen64-debian9-x86_64
+* Mac: It works, but unfortunately you have to build it yourself for now.
+
+Buildbot: https://github-buildbot.cen64.com/builders
+
 # About
 
 Yes, _another_ Nintendo 64 emulator. This one, however, aims for _perfect_
@@ -40,3 +47,45 @@ welcome. Feel free to add yourself to the CONTRIBUTORS file as well.
 * C-pad:          TFGH
 * D-pad:          IJKL
 
+# Build requirements
+
+* iconv
+* OpenAL
+* OpenGL
+
+# Usage
+
+* How do I run cen64?<br />
+You will need a valid pifdata.bin file (NTSC or PAL), & a ROM in .z64 format (in big-endian format).<br />
+
+To run cen64 without multithreading (slower):<br />
+cen64 pifdata.bin ROM.z64<br />
+<br />
+To run cen64 with multithreading (faster):<br />
+cen64 -multithread pifdata.bin ROM.z64<br />
+
+* How do I run 64DD games?<br />
+You will need a valid 64ddipl.bin file (NTSC JPN or USA), & a 64DD disk image file in .ndd format.<br />
+
+cen64 -ddipl 64ddipl.bin -ddrom DISK.ndd pifdata.bin<br />
+
+* How do I setup save files for games?<br />
+N64 has various types of save formats used in games...<br />
+You will need to specify the save type yourself, cen64 will create the file if it does not exist.<br />
+
+EEP4K:<br />
+cen64 -eep4k eep4k.bin pifdata.bin ROM.z64<br />
+<br />
+EEP16K:<br />
+cen64 -eep16k eep16k.bin pifdata.bin ROM.z64<br />
+<br />
+FLASH:<br />
+cen64 -flash flash.bin pifdata.bin ROM.z64<br />
+<br />
+SRAM:<br />
+cen64 -sram sram.bin pifdata.bin ROM.z64<br />
+
+* The game runs, but I get strange errors, like multiple ocarinas in Majora's Mask.<br />
+
+You can fix the issue by using the -flash option on the command line:<br />
+cen64 -flash flash.bin pifdata.bin majora.z64
