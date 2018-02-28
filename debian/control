@@ -5,8 +5,8 @@ Maintainer: John Paul Adrian Glaubitz <glaubitz@physik.fu-berlin.de>
 Build-Depends: debhelper (>= 9), cmake, libgl1-mesa-dev, libopenal-dev
 Standards-Version: 3.9.8
 Homepage: http://www.cen64.com/
-Vcs-Git: git://github.com/glaubitz/cen64-debian.git
-Vcs-Browser: https://github.com/glaubitz/cen64-debian/
+Vcs-Git: https://github.com/dh4/cen64-debian.git
+Vcs-Browser: https://github.com/dh4/cen64-debian/
 
 Package: cen64
 Architecture: amd64
