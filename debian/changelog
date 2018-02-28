@@ -1,3 +1,17 @@
+cen64 (0.3+git20180227-1) unstable; urgency=medium
+
+  * New upstream git snapshot.
+  * New maintainer.
+    - Set myself as maintainer in debian/control.
+  * Update man page with new options.
+  * Remove comments from rules.
+  * Update Vcs-Git location.
+  * Update to secure links.
+  * Use compat level 11.
+  * Declare compliance with Debian Policy 4.1.3.
+
+ -- Dan Hasting <maintainer@hasting.email>  Tue, 27 Feb 2018 20:04:42 -0500
+
 cen64 (0.3+git20170407-1) unstable; urgency=medium
 
   * New upstream git snapshot.
