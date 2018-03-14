@@ -3,7 +3,7 @@ Upstream-Name: cen64
 Source: https://www.cen64.com
 
 Files: *
-Copyright: 2013-2017 Tyler J. Stachecki <tstache1@binghamton.edu>
+Copyright: 2013-2018 Tyler J. Stachecki <tstache1@binghamton.edu>
 License: BSD-3-clause
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions
@@ -29,7 +29,7 @@ License: BSD-3-clause
  EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 Files: debian/*
-Copyright: 2015-2017 John Paul Adrian Glaubitz <glaubitz@physik.fu-berlin.de>
+Copyright: 2015-2018 John Paul Adrian Glaubitz <glaubitz@physik.fu-berlin.de>
 License: BSD-3-clause-GENERIC
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions
