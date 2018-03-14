@@ -1,3 +1,10 @@
+cen64 (0.3+git20180227-2) unstable; urgency=medium
+
+  * Build with sse2 to support all amd64 processors.
+  * Update years in debian/copyright.
+
+ -- Dan Hasting <maintainer@hasting.email>  Tue, 13 Mar 2018 20:47:18 -0400
+
 cen64 (0.3+git20180227-1) unstable; urgency=medium
 
   * New upstream git snapshot.
