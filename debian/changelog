@@ -2,6 +2,8 @@ cen64 (0.3+git20180227-3) UNRELEASED; urgency=low
 
   * Bump debhelper from old 11 to 12.
   * Set debhelper-compat version in Build-Depends.
+  * Set upstream metadata fields: Bug-Database, Bug-Submit, Repository,
+    Repository-Browse.
 
  -- Debian Janitor <janitor@jelmer.uk>  Wed, 03 Jun 2020 01:49:45 -0000
 
