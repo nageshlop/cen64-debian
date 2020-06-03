@@ -1,3 +1,9 @@
+cen64 (0.3+git20180227-3) UNRELEASED; urgency=low
+
+  * Bump debhelper from old 11 to 12.
+
+ -- Debian Janitor <janitor@jelmer.uk>  Wed, 03 Jun 2020 01:49:45 -0000
+
 cen64 (0.3+git20180227-2) unstable; urgency=medium
 
   * Build with sse2 to support all amd64 processors.
