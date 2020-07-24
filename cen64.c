@@ -97,7 +97,15 @@ int cen64_main(int argc, const char **argv) {
 
   if (cart.size >= 0x40 && (cart_info = cart_db_get_entry(cart.ptr)) != NULL) {
     printf("Detected cart: %s[%s] - %s\n", cart_info->rom_id, cart_info->regions, cart_info->description);
-    switch (cart_info->save_type) {
+
+    enum cart_db_save_type save_type = cart_info->save_type;
+    if (strcmp(cart_info->rom_id,"NK4") == 0) {
+      // Special case for Japanese Kirby 64, which has different save types for different revisions
+      uint8_t* rom = cart.ptr;
+      if(rom[0x3e] == 'J' && rom[0x3f] < 2) save_type = CART_DB_SAVE_TYPE_SRAM_256KBIT;
+    }
+
+    switch (save_type) {
       case CART_DB_SAVE_TYPE_EEPROM_4KBIT:
         if (options.eeprom_path == NULL) {
           printf("Warning: cart saves to 4kbit EEPROM, but none specified (see -eep4k)\n");
@@ -182,7 +190,8 @@ int cen64_main(int argc, const char **argv) {
 
     if (device_create(device, &ddipl, dd_variant, &ddrom,
       &pifrom, &cart, &eeprom, &sram,
-      &flashram, is_in, controller, options.no_audio, options.no_video) == NULL) {
+      &flashram, is_in, controller,
+      options.no_audio, options.no_video, options.enable_profiling) == NULL) {
       printf("Failed to create a device.\n");
       status = EXIT_FAILURE;
     }
@@ -190,7 +199,7 @@ int cen64_main(int argc, const char **argv) {
     else {
       device->multithread = options.multithread;
       status = run_device(device, options.no_video);
-      device_destroy(device);
+      device_destroy(device, options.cart_path);
     }
 
     cen64_free(&cen64_device_mem);
@@ -424,9 +433,11 @@ int run_device(struct cen64_device *device, bool no_video) {
 
   if (cen64_thread_create(&thread, run_device_thread, device)) {
     printf("Failed to create the main emulation thread.\n");
-    device_destroy(device);
+    device_destroy(device, NULL);
     return 1;
   }
+
+  cen64_thread_setname(thread, "device");
 
   if (!no_video)
     cen64_gl_window_thread(device);
@@ -437,6 +448,7 @@ int run_device(struct cen64_device *device, bool no_video) {
 }
 
 CEN64_THREAD_RETURN_TYPE run_device_thread(void *opaque) {
+  cen64_thread_setname(NULL, "device");
   struct cen64_device *device = (struct cen64_device *) opaque;
 
   device_run(device);

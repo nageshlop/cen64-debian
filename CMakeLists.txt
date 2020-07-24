@@ -25,7 +25,7 @@ find_package(Threads REQUIRED)
 
 # If using GCC, configure it accordingly.
 if (${CMAKE_C_COMPILER_ID} MATCHES GNU)
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wno-unused-parameter -std=c99")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-common -Wall -Wextra -Wno-unused-parameter -std=c99 -Werror=implicit-function-declaration")
 
   # Include architecture-specify machinery.
   execute_process(COMMAND ${CMAKE_C_COMPILER} -dumpmachine
@@ -98,14 +98,21 @@ if (${CMAKE_C_COMPILER_ID} MATCHES GNU)
   endif (GCC_VERSION VERSION_GREATER 4.8 OR GCC_VERSION VERSION_EQUAL 4.8)
 
   # Check for undefined behaviour when debugging.
-  if (GCC_VERSION VERSION_GREATER 4.8 OR GCC_VERSION VERSION_EQUAL 4.8)
+  if (GCC_VERSION VERSION_GREATER 4.9 OR GCC_VERSION VERSION_EQUAL 4.9)
     set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -fsanitize=undefined")
-  endif (GCC_VERSION VERSION_GREATER 4.8 OR GCC_VERSION VERSION_EQUAL 4.8)
+    set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -fsanitize=undefined")
+  endif (GCC_VERSION VERSION_GREATER 4.9 OR GCC_VERSION VERSION_EQUAL 4.9)
 
   # Use fat LTO objects.
   if (GCC_VERSION VERSION_GREATER 4.9 OR GCC_VERSION VERSION_EQUAL 4.9)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ffat-lto-objects")
   endif (GCC_VERSION VERSION_GREATER 4.9 OR GCC_VERSION VERSION_EQUAL 4.9)
+
+  # Check for const-correctness.
+  if (GCC_VERSION VERSION_GREATER 5.1 OR GCC_VERSION VERSION_EQUAL 5.1)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror=discarded-qualifiers")
+  endif (GCC_VERSION VERSION_GREATER 5.1 OR GCC_VERSION VERSION_EQUAL 5.1)
+  
 endif (${CMAKE_C_COMPILER_ID} MATCHES GNU)
 
 # If using Clang, configure it accordingly.
@@ -148,11 +155,7 @@ if (${CMAKE_C_COMPILER_ID} MATCHES Clang)
   endif (${CLANG_MACHINE} STREQUAL "arm")
 
   # Set architecture-independent flags.
-  if (APPLE)
-    set(CMAKE_C_FLAGS_DEBUG "-ggdb3 -g3 -O0")
-  else ()
-    set(CMAKE_C_FLAGS_DEBUG "-ggdb3 -g3 -O0 -fsanitize=undefined")
-  endif ()
+  set(CMAKE_C_FLAGS_DEBUG "-ggdb3 -g3 -O0")
   set(CMAKE_C_FLAGS_MINSIZEREL "-Os -DNDEBUG")
   set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG")
   set(CMAKE_C_FLAGS_RELWITHDEBINFO "-O3 -DNDEBUG -ggdb3 -g3")
@@ -254,6 +257,7 @@ set(ARCH_X86_64_SOURCES
   ${PROJECT_SOURCE_DIR}/arch/x86_64/rsp/vdivh.c
   ${PROJECT_SOURCE_DIR}/arch/x86_64/rsp/rsp.c
   ${PROJECT_SOURCE_DIR}/arch/x86_64/rsp/vrsq.c
+  ${PROJECT_SOURCE_DIR}/arch/x86_64/rsp/transpose.c
 )
 
 set(BUS_SOURCES
@@ -404,7 +408,7 @@ if (DEFINED UNIX)
   find_package(X11 REQUIRED)
 
   if (${CMAKE_C_COMPILER_ID} MATCHES GNU OR ${CMAKE_C_COMPILER_ID} MATCHES Clang OR ${CMAKE_C_COMPILER_ID} MATCHES Intel)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_POSIX_C_SOURCE=200112L -D_BSD_SOURCE")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_POSIX_C_SOURCE=200112L -D_BSD_SOURCE -D_DEFAULT_SOURCE")
   endif (${CMAKE_C_COMPILER_ID} MATCHES GNU OR ${CMAKE_C_COMPILER_ID} MATCHES Clang OR ${CMAKE_C_COMPILER_ID} MATCHES Intel)
 endif (DEFINED UNIX)
 

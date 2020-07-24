@@ -20,11 +20,14 @@ void gl_window_init(struct vi_controller *vi) {
   glDisable(GL_DITHER);
   glEnable(GL_TEXTURE_2D);
 
+  // Initialize gamma boost blend function.
+  glBlendFunc(GL_ONE, GL_ONE);
+
   // Initialize the texture that we'll use for drawing the screen.
   glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
   glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+  glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
 
   // Initialize vertex arrays for drawing.
   glEnableClientState(GL_VERTEX_ARRAY);
@@ -48,6 +51,8 @@ void gl_window_render_frame(struct vi_controller *vi, const uint8_t *buffer,
   unsigned hres, unsigned vres, unsigned hskip, unsigned type) {
   float aspect;
 
+  glClear(GL_COLOR_BUFFER_BIT);
+
   switch(type) {
     case 0:
       return;
@@ -67,10 +72,37 @@ void gl_window_render_frame(struct vi_controller *vi, const uint8_t *buffer,
       break;
   }
 
+  // AA Mode 3 (Replicate Pixels & No Interpolation)
+  if ((vi->regs[VI_STATUS_REG] & 0x300) == 0x300) {
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  }
+  // AA Mode 0..2 (Antialias & Resample)
+  else {
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  }
+
   aspect = (float) hres / (hres + hskip);
   vi->viuv[2] = vi->viuv[4] = aspect;
 
   glDrawArrays(GL_QUADS, 0, 4);
+
+  // Gamma boost blend.
+  if (vi->regs[VI_STATUS_REG] & 0x8) {
+    glEnable(GL_BLEND);
+    glColor3f(0.15f, 0.15f, 0.15f);
+    glDrawArrays(GL_QUADS, 0, 4); // Texture quad blend
+
+    glDisable(GL_TEXTURE_2D);
+    glColor3f(0.1f, 0.1f, 0.1f);
+    glDrawArrays(GL_QUADS, 0, 4); // White quad blend
+
+    glDisable(GL_BLEND);
+    glEnable(GL_TEXTURE_2D);
+    glColor3f(1.0f, 1.0f, 1.0f);
+  }
+
   cen64_gl_window_swap_buffers(vi->window);
 }
 

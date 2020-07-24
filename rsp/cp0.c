@@ -17,6 +17,9 @@
 #include "rsp/decoder.h"
 #include "rsp/interface.h"
 #include "vr4300/interface.h"
+#ifdef _WIN32
+  #include <windows.h>
+#endif
 
 static void rsp_status_write(struct rsp *rsp, uint32_t rt);
 
@@ -98,8 +101,12 @@ void rsp_status_write(struct rsp *rsp, uint32_t rt) {
     prev_status = rsp->regs[RSP_CP0_REGISTER_SP_STATUS];
     status = prev_status;
 
-    if (rt & SP_CLR_HALT) {
+    if ((rt & SP_CLR_HALT) && (status & SP_STATUS_HALT)) {
+      // Save PC around pipeline init
+      uint32_t pc = rsp->pipeline.ifrd_latch.pc;
       rsp_pipeline_init(&rsp->pipeline);
+      rsp->pipeline.ifrd_latch.pc = pc;
+
       status &= ~SP_STATUS_HALT;
     }
 

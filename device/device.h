@@ -25,14 +25,14 @@
 #include "rsp/cpu.h"
 #include "thread.h"
 #include "vi/controller.h"
-#include "vr4300/cpu.h"
+#include "vr4300/interface.h"
 
 // Only used when passed -nointerface.
 extern bool device_exit_requested;
 
 struct cen64_device {
   struct bus_controller bus;
-  struct vr4300 vr4300;
+  struct vr4300* vr4300;
 
   struct ai_controller ai;
   struct dd_controller dd;
@@ -54,15 +54,15 @@ struct cen64_device {
   bool running;
 };
 
-cen64_cold void device_destroy(struct cen64_device *device);
+cen64_cold void device_destroy(struct cen64_device *device, const char *cart_path);
 cen64_cold struct cen64_device *device_create(struct cen64_device *device,
   const struct rom_file *ddipl, const struct dd_variant *dd_variant,
   const struct rom_file *ddrom,
   const struct rom_file *pifrom, const struct rom_file *cart,
   const struct save_file *eeprom, const struct save_file *sram,
-  const struct save_file *flashram, const struct is_viewer *is,
+  const struct save_file *flashram, struct is_viewer *is,
   const struct controller *controller,
-  bool no_audio, bool no_video);
+  bool no_audio, bool no_video, bool profiling);
 
 cen64_cold void device_exit(struct bus_controller *bus);
 cen64_cold void device_run(struct cen64_device *device);

@@ -38,14 +38,12 @@ void pi_cycle_(struct pi_controller *pi) {
 
     // XXX: Defer actual movement of bytes until... now.
     // This is a giant hack; bytes should be DMA'd slowly.
-    // Also, why the heck does the OR do? I know the &
-    // clears the busy bit, but...
     pi->is_dma_read ? pi_dma_read(pi) : pi_dma_write(pi);
 
     pi->regs[PI_DRAM_ADDR_REG] += bytes;
     pi->regs[PI_CART_ADDR_REG] += bytes;
-    pi->regs[PI_STATUS_REG] &= ~0x1;
-    pi->regs[PI_STATUS_REG] |= 0x8;
+    pi->regs[PI_STATUS_REG] &= ~PI_STATUS_DMA_BUSY;
+    pi->regs[PI_STATUS_REG] |= PI_STATUS_INTERRUPT;
 
     signal_rcp_interrupt(pi->bus->vr4300, MI_INTR_PI);
 
@@ -56,7 +54,7 @@ void pi_cycle_(struct pi_controller *pi) {
 
 // Copies data from RDRAM to the PI
 static int pi_dma_read(struct pi_controller *pi) {
-  uint32_t dest = pi->regs[PI_CART_ADDR_REG] & 0xFFFFFFF;
+  uint32_t dest = pi->regs[PI_CART_ADDR_REG] & 0xFFFFFFE;
   uint32_t source = pi->regs[PI_DRAM_ADDR_REG] & 0x7FFFFF;
   uint32_t length = (pi->regs[PI_RD_LEN_REG] & 0xFFFFFF) + 1;
 
@@ -87,7 +85,7 @@ static int pi_dma_read(struct pi_controller *pi) {
 // Copies data from the the PI into RDRAM.
 static int pi_dma_write(struct pi_controller *pi) {
   uint32_t dest = pi->regs[PI_DRAM_ADDR_REG] & 0x7FFFFF;
-  uint32_t source = pi->regs[PI_CART_ADDR_REG] & 0xFFFFFFF;
+  uint32_t source = pi->regs[PI_CART_ADDR_REG] & 0xFFFFFFE;
   uint32_t length = (pi->regs[PI_WR_LEN_REG] & 0xFFFFFF) + 1;
 
   if (length & 7)
@@ -138,7 +136,7 @@ static int pi_dma_write(struct pi_controller *pi) {
       for (i = (pi->regs[PI_CART_ADDR_REG] + pi->rom_size + 3) & ~0x3;
           i < pi->regs[PI_CART_ADDR_REG] + length; i += 4) {
         uint32_t word = (i >> 16) | (i & 0xFFFF0000);
-        memcpy(pi->bus->ri->ram + dest + i, &word, sizeof(word));
+        memcpy(pi->bus->ri->ram + dest, &word, sizeof(word));
       }
 
       length = pi->rom_size - source;
@@ -219,16 +217,21 @@ int write_pi_regs(void *opaque, uint32_t address, uint32_t word, uint32_t dqm) {
   debug_mmio_write(pi, pi_register_mnemonics[reg], word, dqm);
 
   if (reg == PI_STATUS_REG) {
-    if (word & 0x1)
-      pi->regs[reg] = 0;
+    if (word & PI_STATUS_RESET_CONTROLLER)
+      pi->regs[reg] &= ~(PI_STATUS_IS_BUSY | PI_STATUS_ERROR);
 
-    if (word & 0x2) {
+    if (word & PI_STATUS_CLEAR_INTERRUPT) {
       clear_rcp_interrupt(pi->bus->vr4300, MI_INTR_PI);
-      pi->regs[reg] &= ~0x8;
+      pi->regs[reg] &= ~PI_STATUS_INTERRUPT;
     }
   }
 
   else {
+    if (pi->regs[PI_STATUS_REG] & PI_STATUS_IS_BUSY) {
+      pi->regs[PI_STATUS_REG] |= PI_STATUS_ERROR;
+      return 0;
+    }
+
     pi->regs[reg] &= ~dqm;
     pi->regs[reg] |= word;
 
@@ -237,8 +240,8 @@ int write_pi_regs(void *opaque, uint32_t address, uint32_t word, uint32_t dqm) {
 
     else if (reg == PI_WR_LEN_REG) {
       if (pi->regs[PI_DRAM_ADDR_REG] == 0xFFFFFFFF) {
-        pi->regs[PI_STATUS_REG] &= ~0x1;
-        pi->regs[PI_STATUS_REG] |= 0x8;
+        pi->regs[PI_STATUS_REG] &= ~PI_STATUS_DMA_BUSY;
+        pi->regs[PI_STATUS_REG] |= PI_STATUS_INTERRUPT;
 
         signal_rcp_interrupt(pi->bus->vr4300, MI_INTR_PI);
         return 0;
@@ -246,14 +249,14 @@ int write_pi_regs(void *opaque, uint32_t address, uint32_t word, uint32_t dqm) {
 
       pi->bytes_to_copy = (pi->regs[PI_WR_LEN_REG] & 0xFFFFFF) + 1;
       pi->counter = pi->bytes_to_copy / 2 + 100; // Assume ~2 bytes/clock?
-      pi->regs[PI_STATUS_REG] |= 0x9; // I'm busy!
+      pi->regs[PI_STATUS_REG] |= PI_STATUS_DMA_BUSY; // I'm busy!
       pi->is_dma_read = false;
     }
 
     else if (reg == PI_RD_LEN_REG) {
       if (pi->regs[PI_DRAM_ADDR_REG] == 0xFFFFFFFF) {
-        pi->regs[PI_STATUS_REG] &= ~0x1;
-        pi->regs[PI_STATUS_REG] |= 0x8;
+        pi->regs[PI_STATUS_REG] &= ~PI_STATUS_DMA_BUSY;
+        pi->regs[PI_STATUS_REG] |= PI_STATUS_INTERRUPT;
 
         signal_rcp_interrupt(pi->bus->vr4300, MI_INTR_PI);
         return 0;
@@ -261,7 +264,7 @@ int write_pi_regs(void *opaque, uint32_t address, uint32_t word, uint32_t dqm) {
 
       pi->bytes_to_copy = (pi->regs[PI_RD_LEN_REG] & 0xFFFFFF) + 1;
       pi->counter = pi->bytes_to_copy / 2 + 100; // Assume ~2 bytes/clock?
-      pi->regs[PI_STATUS_REG] |= 0x9; // I'm busy!
+      pi->regs[PI_STATUS_REG] |= PI_STATUS_DMA_BUSY; // I'm busy!
       pi->is_dma_read = true;
     }
   }
@@ -351,4 +354,3 @@ int write_sram(void *opaque, uint32_t address, uint32_t word, uint32_t dqm) {
   fprintf(stderr, "SRAM write\n");
   return 0;
 }
-

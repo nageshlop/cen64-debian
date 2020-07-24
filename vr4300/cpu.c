@@ -9,6 +9,7 @@
 //
 
 #include "common.h"
+#include "vr4300/interface.h"
 #include "vr4300/cp0.h"
 #include "vr4300/cp1.h"
 #include "vr4300/cpu.h"
@@ -23,6 +24,24 @@ const char *mi_register_mnemonics[NUM_MI_REGISTERS] = {
 };
 #endif
 
+void vr4300_cycle(struct vr4300 *vr4300) {
+  struct vr4300_pipeline *pipeline = &vr4300->pipeline;
+
+  // Increment counters.
+  vr4300->regs[VR4300_CP0_REGISTER_COUNT]++;
+
+  if ((uint32_t) (vr4300->regs[VR4300_CP0_REGISTER_COUNT] >> 1) ==
+    (uint32_t) vr4300->regs[VR4300_CP0_REGISTER_COMPARE])
+    vr4300->regs[VR4300_CP0_REGISTER_CAUSE] |= 0x8000;
+
+  // We're stalling for something...
+  if (pipeline->cycles_to_stall > 0)
+    pipeline->cycles_to_stall--;
+
+  else
+    vr4300_cycle_(vr4300);
+}
+
 // Sets the opaque pointer used for external accesses.
 static void vr4300_connect_bus(struct vr4300 *vr4300,
   struct bus_controller *bus) {
@@ -30,7 +49,7 @@ static void vr4300_connect_bus(struct vr4300 *vr4300,
 }
 
 // Initializes the VR4300 component.
-int vr4300_init(struct vr4300 *vr4300, struct bus_controller *bus) {
+int vr4300_init(struct vr4300 *vr4300, struct bus_controller *bus, bool profiling) {
   vr4300_connect_bus(vr4300, bus);
 
   vr4300_cp0_init(vr4300);
@@ -45,6 +64,12 @@ int vr4300_init(struct vr4300 *vr4300, struct bus_controller *bus) {
   // MESS uses this version, so we will too?
   vr4300->mi_regs[MI_VERSION_REG] = 0x01010101;
   vr4300->mi_regs[MI_INIT_MODE_REG] = 0x80;
+
+  if (profiling)
+    vr4300->profile_samples = calloc(8 * 1024 * 1024, sizeof(uint64_t));
+  else
+    vr4300->profile_samples = NULL;
+
   return 0;
 }
 
@@ -100,3 +125,30 @@ void vr4300_print_summary(struct vr4300_stats *stats) {
   }
 }
 
+uint64_t vr4300_get_register(struct vr4300 *vr4300, size_t i) {
+    return vr4300->regs[i];
+}
+
+uint64_t vr4300_get_pc(struct vr4300 *vr4300) {
+    return vr4300->pipeline.dcwb_latch.common.pc;
+}
+
+struct vr4300* vr4300_alloc() {
+    struct vr4300* ptr = (struct vr4300*)malloc(sizeof(struct vr4300));
+    memset(ptr, 0, sizeof(struct vr4300));
+    return ptr;
+}
+
+cen64_cold void vr4300_free(struct vr4300* ptr) {
+    free(ptr);
+}
+
+cen64_cold struct vr4300_stats* vr4300_stats_alloc() {
+    struct vr4300_stats* ptr = (struct vr4300_stats*)malloc(sizeof(struct vr4300_stats));
+    memset(ptr, 0, sizeof(struct vr4300_stats));
+    return ptr;
+}
+
+cen64_cold void vr4300_stats_free(struct vr4300_stats* ptr) {
+    free(ptr);
+}

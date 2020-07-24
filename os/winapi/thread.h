@@ -11,6 +11,7 @@
 #ifndef CEN64_OS_WINAPI_THREAD
 #define CEN64_OS_WINAPI_THREAD
 #include "common.h"
+#include <errno.h>
 #include <windows.h>
 
 #define CEN64_THREAD_RETURN_TYPE DWORD
@@ -45,6 +46,19 @@ static inline int cen64_thread_join(cen64_thread *t) {
     return 1;
 
   return !CloseHandle(*t);
+}
+
+// Sets the name of the thread to a specific value
+// This function is API dependent and must be called either
+// before starting the thread or with older Windows APIs directly after the creation.
+// If you call it at the wrong time or your OS doesn't support custom thread names
+// the return value will be non-zero.
+// If cen64_thread is not set the name of the current thread will be changed.
+//
+// Windows isn't supported for the moment.
+//
+static inline int cen64_thread_setname(cen64_thread *t, const char *name) {
+  return ENOSYS;
 }
 
 //

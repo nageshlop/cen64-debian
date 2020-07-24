@@ -48,11 +48,11 @@ typedef char bool;
 #endif
 
 #ifdef __llvm__
-#define CEN64_COMPILER "llvm-"stringify(__clang_major__)"." \
-  stringify(__clang_minor__)"."stringify(__clang_patchlevel__)
+#define CEN64_COMPILER "llvm-" stringify(__clang_major__)"." \
+  stringify(__clang_minor__)"." stringify(__clang_patchlevel__)
 #elif defined(__GNUC__)
-#define CEN64_COMPILER "gcc-"stringify(__GNUC__)"." \
-  stringify(__GNUC_MINOR__)"."stringify(__GNUC_PATCHLEVEL__)
+#define CEN64_COMPILER "gcc-" stringify(__GNUC__)"." \
+  stringify(__GNUC_MINOR__)"." stringify(__GNUC_PATCHLEVEL__)
 #elif defined(_MSC_VER)
 #if _MSC_VER < 1300
 #define CEN64_COMPILER "MSVC 6.0"
@@ -159,6 +159,23 @@ static inline uint32_t byteswap_32(uint32_t word) {
     (((word) >>  8) & 0x0000FF00) | \
     (((word) <<  8) & 0x00FF0000) | \
     (((word) << 24) & 0xFF000000));
+#endif
+}
+
+#ifdef __GNUC__
+__attribute__((pure))
+#endif
+static inline uint16_t byteswap_16(uint16_t hword) {
+#ifdef BIG_ENDIAN_HOST
+  return hword;
+#elif defined(_MSC_VER)
+  return _byteswap_ushort(hword);
+#elif defined(__GNUC__)
+  return __builtin_bswap16(hword);
+#else
+  return
+  ((((hword) >> 8) & 0x00FF) | \
+    (((hword) <<  8) & 0xFF00));
 #endif
 }
 
